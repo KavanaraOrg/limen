@@ -405,7 +405,7 @@ func profileStatus(w io.Writer, c *Context) error {
 	declared := c.ProfileList()
 	if len(declared) == 0 {
 		fmt.Fprintln(w, "No profiles declared.")
-		fmt.Fprintf(w, "Declare one in %s:  profiles: levara-baseline@1.0.0\n",
+		fmt.Fprintf(w, "Declare one in %s:  profiles: kavanara-baseline@1.0.0\n",
 			filepath.Join(".limen", "meta.yaml"))
 		return nil
 	}

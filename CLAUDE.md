@@ -14,7 +14,7 @@ agents.
 
 ## Inherited norms
 
-This directory inherits `levara-baseline@3.0.0` (see `.limen/meta.yaml`). The
+This directory inherits `kavanara-baseline@4.0.0` (see `.limen/meta.yaml`). The
 skills are materialised in `.claude/skills/`, the reasoning as ADRs in
 `docs/adr/`. In short:
 
@@ -44,7 +44,7 @@ skills are materialised in `.claude/skills/`, the reasoning as ADRs in
 `limen profile check` proves the copies are unchanged — exit 1 on drift. Do not
 edit the files under `.claude/skills/` or `docs/adr/` by hand: `limen profile
 sync` overwrites them. A norm is changed in the package
-(`~/Documents/GitHub/levara-baseline`) and its version raised.
+(`~/Documents/GitHub/kavanara-baseline`) and its version raised.
 
 Note that limen's own user-facing output is English too, deliberately. ADR-0001
 covers error strings, and a tool with an English README and German error

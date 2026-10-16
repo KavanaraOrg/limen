@@ -27,7 +27,7 @@ type Meta struct {
 	File string
 
 	// Profiles is the raw comma-separated declaration, e.g.
-	// "levara-baseline@1.0.0, house-style".
+	// "kavanara-baseline@1.0.0, house-style".
 	Profiles string
 
 	// SkillTarget and ADRTarget say where `limen profile sync` materialises

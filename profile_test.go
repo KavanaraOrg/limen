@@ -22,7 +22,7 @@ func pkg(t *testing.T, name, version string, skills, adrs map[string]string) str
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "` + name + `",
   "version": "` + version + `",
-  "repository": "https://github.com/LevaraOrg/` + name + `"
+  "repository": "https://github.com/KavanaraOrg/` + name + `"
 }
 `
 	write(t, filepath.Join(dir, "plugin.json"), manifest)
@@ -38,7 +38,7 @@ func pkg(t *testing.T, name, version string, skills, adrs map[string]string) str
 // baseline is the package this repository actually ships: three norms.
 func baseline(t *testing.T) string {
 	t.Helper()
-	return pkg(t, "levara-baseline", "1.0.0",
+	return pkg(t, "kavanara-baseline", "1.0.0",
 		map[string]string{
 			"english-only/SKILL.md": "---\nname: english-only\n---\nEnglish.\n",
 			"tdd/SKILL.md":          "---\nname: tdd\n---\nTest first.\n",
@@ -62,7 +62,7 @@ func store(t *testing.T) string {
 func TestMetaProfilesAreRead(t *testing.T) {
 	root, _ := project(t, "label: tessera\n")
 	write(t, filepath.Join(root, ".limen", "meta.yaml"),
-		"profiles: levara-baseline@1.0.0, house-style\n")
+		"profiles: kavanara-baseline@1.0.0, house-style\n")
 
 	ctx, ok := Discover(root)
 	if !ok {
@@ -72,7 +72,7 @@ func TestMetaProfilesAreRead(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("ProfileList() = %+v, want 2 entries", got)
 	}
-	if got[0].Name != "levara-baseline" || got[0].Version != "1.0.0" {
+	if got[0].Name != "kavanara-baseline" || got[0].Version != "1.0.0" {
 		t.Errorf("first = %+v", got[0])
 	}
 	// A bare name is a deliberate "any version": pinning must be a choice.
@@ -87,7 +87,7 @@ func TestMetaCannotBleedIntoTheDescriptor(t *testing.T) {
 	// repository would start dictating who you are.
 	root, _ := project(t, "label: tessera\nactor: Matthias\ngithubUser: levaraleo\n")
 	write(t, filepath.Join(root, ".limen", "meta.yaml"),
-		"label: not-tessera\nactor: Somebody Else\ngithubUser: someone\nprofiles: levara-baseline\n")
+		"label: not-tessera\nactor: Somebody Else\ngithubUser: someone\nprofiles: kavanara-baseline\n")
 
 	ctx, _ := Discover(root)
 	if ctx.Label != "tessera" || ctx.Actor != "Matthias" || ctx.GithubUser != "levaraleo" {
@@ -157,7 +157,7 @@ func TestProfileStatusReportsUnsyncedCurrentAndDrift(t *testing.T) {
 	store(t)
 	src := baseline(t)
 	root, _ := project(t, "label: p\n")
-	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: levara-baseline@1.0.0\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline@1.0.0\n")
 	ctx, _ := Discover(root)
 
 	var out strings.Builder
@@ -226,7 +226,7 @@ func TestProfileListNamesTheStoreContents(t *testing.T) {
 	if _, err := CmdProfile(&out, nil, []string{"list"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "levara-baseline") || !strings.Contains(out.String(), "1.0.0") {
+	if !strings.Contains(out.String(), "kavanara-baseline") || !strings.Contains(out.String(), "1.0.0") {
 		t.Errorf("list = %q", out.String())
 	}
 }
@@ -281,10 +281,10 @@ func TestPluginManifestIsRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Name != "levara-baseline" || p.Version != "1.0.0" {
+	if p.Name != "kavanara-baseline" || p.Version != "1.0.0" {
 		t.Errorf("plugin = %+v", p)
 	}
-	if p.Repository != "https://github.com/LevaraOrg/levara-baseline" {
+	if p.Repository != "https://github.com/KavanaraOrg/kavanara-baseline" {
 		t.Errorf("Repository = %q", p.Repository)
 	}
 }
@@ -305,10 +305,10 @@ func TestInstallFromALocalPathPopulatesTheStore(t *testing.T) {
 	if _, err := CmdProfile(&out, nil, []string{"install", src}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dst, "levara-baseline", "plugin.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dst, "kavanara-baseline", "plugin.json")); err != nil {
 		t.Fatalf("package not in the store: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dst, "levara-baseline", "skills", "tdd", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dst, "kavanara-baseline", "skills", "tdd", "SKILL.md")); err != nil {
 		t.Fatalf("skills not copied: %v", err)
 	}
 }
@@ -331,7 +331,7 @@ func synced(t *testing.T) (root, dst string) {
 	dst = store(t)
 	src := baseline(t)
 	root, _ = project(t, "label: tessera\n")
-	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: levara-baseline@1.0.0\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline@1.0.0\n")
 
 	var out strings.Builder
 	if _, err := CmdProfile(&out, nil, []string{"install", src}); err != nil {
@@ -369,7 +369,7 @@ func TestSyncWritesALockThatNamesEveryFile(t *testing.T) {
 	if err := json.Unmarshal(body, &lock); err != nil {
 		t.Fatal(err)
 	}
-	entry, ok := lock.Profiles["levara-baseline"]
+	entry, ok := lock.Profiles["kavanara-baseline"]
 	if !ok {
 		t.Fatalf("lock = %+v", lock)
 	}
@@ -378,7 +378,7 @@ func TestSyncWritesALockThatNamesEveryFile(t *testing.T) {
 	}
 	// The origin is taken from the manifest, so the lock says where the norm
 	// came from without limen keeping a second registry of sources.
-	if entry.Source != "https://github.com/LevaraOrg/levara-baseline" {
+	if entry.Source != "https://github.com/KavanaraOrg/kavanara-baseline" {
 		t.Errorf("Source = %q", entry.Source)
 	}
 	if len(entry.Files) != 3 {
@@ -416,7 +416,7 @@ func TestSyncDryRunWritesNothing(t *testing.T) {
 	store(t)
 	src := baseline(t)
 	root, _ := project(t, "label: tessera\n")
-	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: levara-baseline\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline\n")
 
 	var out strings.Builder
 	if _, err := CmdProfile(&out, nil, []string{"install", src}); err != nil {
@@ -446,7 +446,7 @@ func TestSyncRemovesFilesTheProfileNoLongerCarries(t *testing.T) {
 	if _, err := os.Stat(stale); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(dst, "levara-baseline", "skills", "tdd")); err != nil {
+	if err := os.RemoveAll(filepath.Join(dst, "kavanara-baseline", "skills", "tdd")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -464,7 +464,7 @@ func TestSyncFailsOnAVersionTheStoreDoesNotHold(t *testing.T) {
 	store(t)
 	src := baseline(t)
 	root, _ := project(t, "label: tessera\n")
-	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: levara-baseline@2.0.0\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline@2.0.0\n")
 
 	var out strings.Builder
 	if _, err := CmdProfile(&out, nil, []string{"install", src}); err != nil {
@@ -538,7 +538,7 @@ func TestCheckDetectsADeletedFile(t *testing.T) {
 func TestCheckDetectsAProfileDeclaredButNeverSynced(t *testing.T) {
 	root, _ := synced(t)
 	write(t, filepath.Join(root, ".limen", "meta.yaml"),
-		"profiles: levara-baseline@1.0.0, house-style\n")
+		"profiles: kavanara-baseline@1.0.0, house-style\n")
 
 	ctx, _ := Discover(root)
 	var out strings.Builder
@@ -569,7 +569,7 @@ func TestCheckWithoutProfilesIsQuietAndPasses(t *testing.T) {
 
 func TestProfilesAppearInJSON(t *testing.T) {
 	root, _ := project(t, "label: tessera\n")
-	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: levara-baseline@1.0.0\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline@1.0.0\n")
 	ctx, _ := Discover(root)
 
 	var out strings.Builder
@@ -585,7 +585,7 @@ func TestProfilesAppearInJSON(t *testing.T) {
 		t.Fatalf("profiles = %v", v["profiles"])
 	}
 	first := list[0].(map[string]any)
-	if first["name"] != "levara-baseline" || first["version"] != "1.0.0" {
+	if first["name"] != "kavanara-baseline" || first["version"] != "1.0.0" {
 		t.Errorf("profiles[0] = %v", first)
 	}
 }
@@ -604,12 +604,12 @@ func TestJSONCarriesAnEmptyProfileListRatherThanNull(t *testing.T) {
 
 func TestShowNamesTheProfiles(t *testing.T) {
 	root, _ := project(t, "label: tessera\n")
-	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: levara-baseline@1.0.0\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline@1.0.0\n")
 	ctx, _ := Discover(root)
 
 	var out strings.Builder
 	RenderShow(&out, ctx, fixedResolver{})
-	if !strings.Contains(out.String(), "levara-baseline@1.0.0") {
+	if !strings.Contains(out.String(), "kavanara-baseline@1.0.0") {
 		t.Errorf("show = %s", out.String())
 	}
 }
@@ -628,7 +628,7 @@ func TestSeveralProfilesAreMaterialisedSideBySide(t *testing.T) {
 
 	root, _ := project(t, "label: tessera\n")
 	write(t, filepath.Join(root, ".limen", "meta.yaml"),
-		"profiles: levara-baseline@1.0.0, house-style@2\n")
+		"profiles: kavanara-baseline@1.0.0, house-style@2\n")
 
 	var out strings.Builder
 	for _, src := range []string{base, extra} {
@@ -642,7 +642,7 @@ func TestSeveralProfilesAreMaterialisedSideBySide(t *testing.T) {
 	}
 
 	for _, rel := range []string{
-		".claude/skills/tdd/SKILL.md",     // from levara-baseline
+		".claude/skills/tdd/SKILL.md",     // from kavanara-baseline
 		".claude/skills/caveman/SKILL.md", // from house-style
 	} {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
@@ -673,7 +673,7 @@ func TestDroppingOneProfileLeavesTheOthersAlone(t *testing.T) {
 
 	root, _ := project(t, "label: tessera\n")
 	write(t, filepath.Join(root, ".limen", "meta.yaml"),
-		"profiles: levara-baseline@1.0.0, house-style@2\n")
+		"profiles: kavanara-baseline@1.0.0, house-style@2\n")
 
 	var out strings.Builder
 	for _, src := range []string{base, extra} {
@@ -687,7 +687,7 @@ func TestDroppingOneProfileLeavesTheOthersAlone(t *testing.T) {
 	}
 
 	// Deactivate house-style by removing it from the declaration.
-	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: levara-baseline@1.0.0\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline@1.0.0\n")
 	ctx, _ = Discover(root)
 	if _, err := CmdProfile(&out, ctx, []string{"sync"}); err != nil {
 		t.Fatal(err)

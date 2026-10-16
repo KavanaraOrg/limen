@@ -1,6 +1,6 @@
 ---
-name: levara-containerised
-description: Enforces that large LevaraOrg projects (long-lived services, multiple deployable modules, or dependent on another running service — e.g. Tessera, circlead-platform) build, start and pass a smoke test as containers, proven by CI on every change to the default branch. ALWAYS consult before adding a module, a service dependency or a configuration value to such a project, editing its Dockerfile or compose file, deciding whether a repository counts as large, or claiming it is deployable. Keywords: docker, dockerfile, container, image, compose, docker-compose, healthcheck, health endpoint, smoke test, deploy, deployable, portable, base image, non-root, multi-stage, skipTests, large project, service, tessera, circlead.
+name: kavanara-containerised
+description: Enforces that large KavanaraOrg projects (long-lived services, multiple deployable modules, or dependent on another running service — e.g. Tessera, circlead-platform) build, start and pass a smoke test as containers, proven by CI on every change to the default branch. ALWAYS consult before adding a module, a service dependency or a configuration value to such a project, editing its Dockerfile or compose file, deciding whether a repository counts as large, or claiming it is deployable. Keywords: docker, dockerfile, container, image, compose, docker-compose, healthcheck, health endpoint, smoke test, deploy, deployable, portable, base image, non-root, multi-stage, skipTests, large project, service, tessera, circlead.
 ---
 
 # Containerised

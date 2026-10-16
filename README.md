@@ -155,7 +155,7 @@ client: **which project inherits a package**, and **whether the copy in the
 project is still the one that was approved**.
 
 ```bash
-limen profile install https://github.com/LevaraOrg/levara-baseline
+limen profile install https://github.com/KavanaraOrg/kavanara-baseline
 ```
 
 The declaration goes in `.limen/meta.yaml`, not in the descriptor. That is not
@@ -165,7 +165,7 @@ not of the laptop it was checked out on.
 
 ```yaml
 # .limen/meta.yaml
-profiles: levara-baseline@1.0.0, matt-pocock@1.0.0
+profiles: kavanara-baseline@1.0.0, matt-pocock@1.0.0
 pausedSkills: write-a-skill      # inherited, deliberately off here
 skillTarget: .claude/skills      # default
 adrTarget: docs/adr              # default
@@ -228,10 +228,10 @@ without reading any directory:
 file**:
 
 ```json
-{ "version": 1, "profiles": { "levara-baseline": {
+{ "version": 1, "profiles": { "kavanara-baseline": {
   "version": "1.0.0",
-  "source": "https://github.com/LevaraOrg/levara-baseline",
-  "files": { ".claude/skills/levara-english/SKILL.md": "sha256:6ee2a868…" } } } }
+  "source": "https://github.com/KavanaraOrg/kavanara-baseline",
+  "files": { ".claude/skills/kavanara-english/SKILL.md": "sha256:6ee2a868…" } } } }
 ```
 
 Only that makes `check` a statement rather than a guess: a norm someone bent
@@ -274,7 +274,7 @@ limen list --json
 # [{"root":"/Users/…/product-strategy","label":"product-strategy",
 #   "purpose":"Product strategy — …","topics":["design-thinking","…"],
 #   "language":"english",
-#   "profiles":[{"name":"levara-baseline","version":"1.0.0"}],
+#   "profiles":[{"name":"kavanara-baseline","version":"1.0.0"}],
 #   "source":"limen"}]
 ```
 
