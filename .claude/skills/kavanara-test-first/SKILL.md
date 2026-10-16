@@ -1,6 +1,6 @@
 ---
-name: levara-test-first
-description: Enforces test-driven development in LevaraOrg repositories — write a failing test first, watch it fail for the right reason, then write the least code that makes it pass. ALWAYS consult before implementing a feature, changing behaviour, or fixing a bug, and before reporting any implementation as done. Covers what is exempt (formatting, generated code, throwaway spikes), why bug fixes never are, how to name a test after the behaviour it pins, and when a negative control is needed. Keywords: test, tests, testing, TDD, test-driven, unit test, red green refactor, failing test, coverage, bug, fix, regression, reproduce, implement, feature, refactor.
+name: kavanara-test-first
+description: Enforces test-driven development in KavanaraOrg repositories — write a failing test first, watch it fail for the right reason, then write the least code that makes it pass. ALWAYS consult before implementing a feature, changing behaviour, or fixing a bug, and before reporting any implementation as done. Covers what is exempt (formatting, generated code, throwaway spikes), why bug fixes never are, how to name a test after the behaviour it pins, and when a negative control is needed. Keywords: test, tests, testing, TDD, test-driven, unit test, red green refactor, failing test, coverage, bug, fix, regression, reproduce, implement, feature, refactor.
 ---
 
 # Test first

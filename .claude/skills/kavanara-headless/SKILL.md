@@ -1,6 +1,6 @@
 ---
-name: levara-headless
-description: Enforces that every LevaraOrg service works headless — every capability reachable through its documented public interface (HTTP API, optionally CLI or MCP) without the frontend, the frontend a client of that same interface, and no rule that exists only in the frontend. ALWAYS consult before adding a feature, screen, form, button, validation or endpoint to a service, before writing frontend logic, before adding a backend-for-frontend route, and before claiming a service feature is done. Keywords: headless, API-first, API, REST, OpenAPI, endpoint, frontend, UI, web app, screen, form, validation, backend-for-frontend, BFF, CLI, MCP, agent, automation, integration test, service, tessera, circlead.
+name: kavanara-headless
+description: Enforces that every KavanaraOrg service works headless — every capability reachable through its documented public interface (HTTP API, optionally CLI or MCP) without the frontend, the frontend a client of that same interface, and no rule that exists only in the frontend. ALWAYS consult before adding a feature, screen, form, button, validation or endpoint to a service, before writing frontend logic, before adding a backend-for-frontend route, and before claiming a service feature is done. Keywords: headless, API-first, API, REST, OpenAPI, endpoint, frontend, UI, web app, screen, form, validation, backend-for-frontend, BFF, CLI, MCP, agent, automation, integration test, service, tessera, circlead.
 ---
 
 # Headless

@@ -1,6 +1,6 @@
 ---
-name: levara-token-frugal
-description: Enforces token-frugal work in LevaraOrg repositories — prefer a deterministic script or CLI over re-deriving an answer by reasoning, read narrowly instead of whole files, batch independent calls, delegate bulk searches to a subagent, and say things once. ALWAYS consult before starting an investigation, a repository-wide search, an audit, or any task that will read many files. Also covers what frugality never licenses: skipping a required check or truncating a result without saying so. Keywords: token, tokens, budget, cost, expensive, context, sparsam, effizient, search, grep, read files, audit, investigate, scan, repository-wide, summarize, report, script instead of reasoning.
+name: kavanara-token-frugal
+description: Enforces token-frugal work in KavanaraOrg repositories — prefer a deterministic script or CLI over re-deriving an answer by reasoning, read narrowly instead of whole files, batch independent calls, delegate bulk searches to a subagent, and say things once. ALWAYS consult before starting an investigation, a repository-wide search, an audit, or any task that will read many files. Also covers what frugality never licenses: skipping a required check or truncating a result without saying so. Keywords: token, tokens, budget, cost, expensive, context, sparsam, effizient, search, grep, read files, audit, investigate, scan, repository-wide, summarize, report, script instead of reasoning.
 ---
 
 # Spend tokens like a budget

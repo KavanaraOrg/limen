@@ -1,6 +1,6 @@
 ---
-name: levara-covered
-description: Enforces the LevaraOrg coverage floor (75% line coverage per module, as a ratchet where not yet met) and the requirement that every repository run a bug-pattern analyzer over its own sources. ALWAYS consult before changing a coverage threshold, adding or excluding a static-analysis rule, reporting coverage, or claiming a quality gate is satisfied. Explains why a floor is not a target, why it does not licence writing tests after the code, how the ratchet works, and why every exclusion needs a stated reason. Keywords: coverage, jacoco, line coverage, threshold, gate, ratchet, floor, 75, static analysis, spotbugs, analyzer, bug pattern, lint, exclusion, suppress, quality gate.
+name: kavanara-covered
+description: Enforces the KavanaraOrg coverage floor (75% line coverage per module, as a ratchet where not yet met) and the requirement that every repository run a bug-pattern analyzer over its own sources. ALWAYS consult before changing a coverage threshold, adding or excluding a static-analysis rule, reporting coverage, or claiming a quality gate is satisfied. Explains why a floor is not a target, why it does not licence writing tests after the code, how the ratchet works, and why every exclusion needs a stated reason. Keywords: coverage, jacoco, line coverage, threshold, gate, ratchet, floor, 75, static analysis, spotbugs, analyzer, bug pattern, lint, exclusion, suppress, quality gate.
 ---
 
 # Covered

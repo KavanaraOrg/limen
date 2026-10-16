@@ -1,6 +1,6 @@
 ---
-name: levara-english
-description: Enforces English as the working language for everything committed to a LevaraOrg repository — code, comments, identifiers, documentation, ADRs, commit messages, test names, error strings and API descriptions — while conversation with the user stays in whatever language they write. ALWAYS consult before creating or editing any file in the repository, and before writing a commit message. Use it also when the user asks in German for a document, a README, an ADR or a code comment: the reply is German, the file is English. Keywords: language, Sprache, English, Englisch, Deutsch, documentation, Doku, README, ADR, commit message, comment, Kommentar, translate, übersetzen, rename, i18n.
+name: kavanara-english
+description: Enforces English as the working language for everything committed to a KavanaraOrg repository — code, comments, identifiers, documentation, ADRs, commit messages, test names, error strings and API descriptions — while conversation with the user stays in whatever language they write. ALWAYS consult before creating or editing any file in the repository, and before writing a commit message. Use it also when the user asks in German for a document, a README, an ADR or a code comment: the reply is German, the file is English. Keywords: language, Sprache, English, Englisch, Deutsch, documentation, Doku, README, ADR, commit message, comment, Kommentar, translate, übersetzen, rename, i18n.
 ---
 
 # English is the working language
