@@ -4,13 +4,14 @@ Context and identity per directory — a Go binary with a descriptor
 (`.limen/limen.yaml`), a registry and rolling notes as an anchor point for
 agents.
 
-## Home and identity (LevaraOrg)
+## Home and identity (KavanaraOrg)
 
-- GitHub home: https://github.com/LevaraOrg/limen — organisation **LevaraOrg**
-  (moved from `matthiaw` on 2026-08-18; old URLs redirect).
+- GitHub home: https://github.com/KavanaraOrg/limen — organisation
+  **KavanaraOrg** (formerly LevaraOrg, before that `matthiaw` until 2026-08-18;
+  old URLs redirect).
 - The working identity of this directory comes from `.limen/limen.yaml` (tool:
-  limen): githubUser `levaraleo`, actor Matthias, Claude config
-  `~/.claude-levara`.
+  limen): githubUser `kavanaraleo`, actor Matthias, Claude config
+  `~/.claude-kavanara`.
 
 ## Inherited norms
 
