@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -69,7 +71,7 @@ func TestStatusTableJoinsEndpointHealthAndStart(t *testing.T) {
 	down := &Context{Root: tempDir(t), Label: "down", Source: SourceLimen}
 	down.set("devport", "9090")
 
-	entries := statusTable([]*Context{down, up}, upOnly(8080), false)
+	entries := statusTable([]*Context{down, up}, upOnly(8080), false, nil)
 	if len(entries) != 2 || entries[0].Label != "down" || entries[1].Label != "up" {
 		t.Fatalf("entries sorted by label, got %+v", entries)
 	}
@@ -92,7 +94,7 @@ func TestStatusTableJoinsEndpointHealthAndStart(t *testing.T) {
 // than a count. The entry still exists, so the count and --verbose have it.
 func TestStatusTableSkipsWhatDeclaresNothing(t *testing.T) {
 	quiet := &Context{Root: tempDir(t), Label: "docs", Source: SourceLimen}
-	entries := statusTable([]*Context{quiet}, upOnly(0), false)
+	entries := statusTable([]*Context{quiet}, upOnly(0), false, nil)
 	if len(entries) != 1 || !entries[0].silent() {
 		t.Fatalf("the entry exists and is silent: %+v", entries)
 	}
@@ -108,7 +110,7 @@ func TestStatusTableKeepsAStartWithoutAnEndpoint(t *testing.T) {
 	root := tempDir(t)
 	write(t, filepath.Join(root, "go.mod"), "module x\n")
 	c := &Context{Root: root, Label: "tool", Source: SourceLimen}
-	entries := statusTable([]*Context{c}, upOnly(0), false)
+	entries := statusTable([]*Context{c}, upOnly(0), false, nil)
 	if len(entries) != 1 || len(entries[0].Endpoints) != 0 || entries[0].Start == nil {
 		t.Errorf("a start routine alone earns a row: %+v", entries)
 	}
@@ -319,5 +321,109 @@ func TestCLIStatusRejectsAnUnknownFlag(t *testing.T) {
 	}
 	if !strings.Contains(r.stderr, "--restart") {
 		t.Errorf("the flag must be named: %s", r.stderr)
+	}
+}
+
+// --- who holds the port ---------------------------------------------------
+
+// heldBy answers every port with one listener working in cwd.
+func heldBy(cwd, command string) holderFunc {
+	return func(int) (string, string, bool) { return cwd, command, true }
+}
+
+func TestStatusTableMarksAPortHeldByAnotherContextAsTaken(t *testing.T) {
+	mine := &Context{Root: tempDir(t), Label: "fundus", Source: SourceLimen}
+	mine.set("devport", "8080")
+	other := &Context{Root: tempDir(t), Label: "circlead", Source: SourceLimen}
+
+	entries := statusTable([]*Context{mine, other}, upOnly(8080), false,
+		heldBy(filepath.Join(other.Root, "app"), "java"))
+	ep := entries[1].Endpoints[0]
+	if entries[1].Label != "fundus" || ep.Health != "taken" || ep.Holder != "circlead" {
+		t.Errorf("8080 held from inside circlead's tree: want taken by circlead, got %+v", ep)
+	}
+	if f := checkFailures(entries); len(f) != 1 || !strings.Contains(f[0], "8080 is taken by circlead") {
+		t.Errorf("a taken port is a failure for --check: %v", f)
+	}
+}
+
+func TestStatusTableKeepsAPortHeldFromItsOwnTreeUp(t *testing.T) {
+	mine := &Context{Root: tempDir(t), Label: "fundus", Source: SourceLimen}
+	mine.set("devport", "8080")
+	// A sibling whose root shares the prefix must not claim the listener.
+	sibling := &Context{Root: mine.Root + "-old", Label: "fundus-old", Source: SourceLimen}
+
+	entries := statusTable([]*Context{mine, sibling}, upOnly(8080), false,
+		heldBy(filepath.Join(mine.Root, "services", "gate"), "java"))
+	if ep := entries[0].Endpoints[0]; ep.Health != "up" || ep.Holder != "" {
+		t.Errorf("held from its own tree: want up without holder, got %+v", ep)
+	}
+}
+
+func TestStatusTableLeavesAnUnattributableListenerUp(t *testing.T) {
+	mine := &Context{Root: tempDir(t), Label: "anonymizer", Source: SourceLimen}
+	mine.set("devport", "8000")
+
+	// Docker's port forwarder works in /, so does many a daemon: limen cannot
+	// tell whose it is, and a guess would be a false alarm.
+	entries := statusTable([]*Context{mine}, upOnly(8000), false, heldBy("/", "com.docker.backend"))
+	if ep := entries[0].Endpoints[0]; ep.Health != "up" || ep.Holder != "com.docker.backend" {
+		t.Errorf("unattributable listener: want up, holder named for information, got %+v", ep)
+	}
+	if f := checkFailures(entries); len(f) != 0 {
+		t.Errorf("not a failure: %v", f)
+	}
+}
+
+func TestStatusTableAsksForNoHolderOfAPortThatIsDown(t *testing.T) {
+	mine := &Context{Root: tempDir(t), Label: "x", Source: SourceLimen}
+	mine.set("devport", "9090")
+	asked := false
+	statusTable([]*Context{mine}, upOnly(0), false, func(int) (string, string, bool) {
+		asked = true
+		return "", "", false
+	})
+	if asked {
+		t.Error("nothing listens, so there is nobody to look up")
+	}
+}
+
+func TestListenerOfFindsThisProcess(t *testing.T) {
+	if _, err := exec.LookPath("lsof"); err != nil {
+		t.Skip("lsof not on PATH")
+	}
+	cwd, command, ok := listenerOf(listen(t))
+	wd, _ := os.Getwd()
+	if !ok || cwd != wd || command == "" {
+		t.Errorf("listenerOf = %q, %q, %v; want this process, working in %q", cwd, command, ok, wd)
+	}
+	if _, _, ok := listenerOf(closedPort(t)); ok {
+		t.Error("a closed port has no listener")
+	}
+}
+
+func TestCLIStatusNamesTheContextThatTookThePort(t *testing.T) {
+	if _, err := exec.LookPath("lsof"); err != nil {
+		t.Skip("lsof not on PATH")
+	}
+	env := sharedState(t)
+	// The listener belongs to this test process, which works in the limen
+	// repository: registered, that tree becomes the holder.
+	wd, _ := os.Getwd()
+	if r := runLimen(t, wd, env, "register"); r.code != 0 {
+		t.Fatalf("register exit %d: %s", r.code, r.stderr)
+	}
+	port := listen(t)
+	statusProject(t, env, "label: victim\ndevPort: "+strconv.Itoa(port)+"\n", nil)
+
+	r := runLimen(t, tempDir(t), env, "status", "--check")
+	if r.code != 1 {
+		t.Errorf("a taken port fails --check, got exit %d", r.code)
+	}
+	if !strings.Contains(r.stdout, "taken by limen") {
+		t.Errorf("the row must name the holder:\n%s", r.stdout)
+	}
+	if !strings.Contains(r.stdout, "1 endpoint · 0 up · 0 down · 1 taken") {
+		t.Errorf("a taken port is neither up nor down in the summary:\n%s", r.stdout)
 	}
 }
