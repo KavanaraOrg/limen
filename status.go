@@ -24,6 +24,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,11 +71,69 @@ func deepProbe(ep Endpoint, path string) (bool, string) {
 	return resp.StatusCode < 400, "http"
 }
 
+// holderFunc names the process listening on a port: its working directory and
+// command. ok is false when nobody listens or the lookup is not possible here.
+type holderFunc func(port int) (cwd, command string, ok bool)
+
+// listenerOf asks lsof(1) — on every Mac, on most Linux machines — which
+// process listens on the port, and where it works. Without lsof, or for a
+// listener lsof may not see (another user's), the answer is simply "unknown":
+// the holder is a refinement of up, never a reason for status to fail.
+func listenerOf(port int) (cwd, command string, ok bool) {
+	out, err := exec.Command("lsof", "-nP", "-iTCP:"+strconv.Itoa(port), "-sTCP:LISTEN", "-Fpc").Output()
+	if err != nil {
+		return "", "", false
+	}
+	pid := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "p") && pid == "":
+			pid = line[1:]
+		case strings.HasPrefix(line, "c") && command == "":
+			command = line[1:]
+		}
+	}
+	if pid == "" {
+		return "", "", false
+	}
+	out, err = exec.Command("lsof", "-a", "-p", pid, "-d", "cwd", "-Fn").Output()
+	if err != nil {
+		return "", "", false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "n") {
+			return line[1:], command, true
+		}
+	}
+	return "", "", false
+}
+
+// owningContext is the registered context whose tree holds dir, the deepest
+// one where trees nest; nil when dir lies outside every context.
+func owningContext(ctxs []*Context, dir string) *Context {
+	var best *Context
+	for _, c := range ctxs {
+		rel, err := filepath.Rel(c.Root, dir)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if best == nil || len(c.Root) > len(best.Root) {
+			best = c
+		}
+	}
+	return best
+}
+
 // statusEndpoint is one declared endpoint and what the probe said about it.
+// Holder names whoever listens when that is not the context itself: another
+// context's label (health "taken"), or, for a listener limen cannot place in
+// any context — Docker's forwarder, a daemon — just its command, for
+// information, with health left at "up".
 type statusEndpoint struct {
 	Endpoint
 	Health string `json:"health"`
 	Check  string `json:"check"`
+	Holder string `json:"holder,omitempty"`
 }
 
 // statusEntry is one row per context — the shape clavo consumes. Endpoints
@@ -97,8 +157,10 @@ func (e statusEntry) silent() bool {
 // statusTable probes every endpoint of every registered context, in parallel
 // because thirty dials in sequence are felt and thirty at once are not. Every
 // context yields an entry, silent ones included — the renderer decides what to
-// show, and --verbose shows all of it.
-func statusTable(ctxs []*Context, probe prober, deep bool) []statusEntry {
+// show, and --verbose shows all of it. holder, when not nil, is asked who
+// listens on every port that is up: a port held from another context's tree is
+// taken, not up — the case of two projects that both default to 8080.
+func statusTable(ctxs []*Context, probe prober, deep bool, holder holderFunc) []statusEntry {
 	entries := make([]statusEntry, len(ctxs))
 	var wg sync.WaitGroup
 	for i, c := range ctxs {
@@ -122,15 +184,30 @@ func statusTable(ctxs []*Context, probe prober, deep bool) []statusEntry {
 				epPath = path
 			}
 			wg.Add(1)
-			go func(i, j int, ep Endpoint, path string) {
+			go func(i, j int, ep Endpoint, path string, self *Context) {
 				defer wg.Done()
 				up, check := probe(ep, path)
-				entries[i].Endpoints[j].Check = check
-				entries[i].Endpoints[j].Health = "down"
-				if up {
-					entries[i].Endpoints[j].Health = "up"
+				e := &entries[i].Endpoints[j]
+				e.Check = check
+				e.Health = "down"
+				if !up {
+					return
 				}
-			}(i, j, ep, epPath)
+				e.Health = "up"
+				if holder == nil {
+					return
+				}
+				cwd, command, ok := holder(ep.Port)
+				if !ok {
+					return
+				}
+				switch owner := owningContext(ctxs, cwd); {
+				case owner == nil:
+					e.Holder = command
+				case owner.Root != self.Root:
+					e.Holder, e.Health = owner.Label, "taken"
+				}
+			}(i, j, ep, epPath, c)
 		}
 	}
 	wg.Wait()
@@ -151,6 +228,9 @@ func checkFailures(entries []statusEntry) []string {
 		for _, ep := range e.Endpoints {
 			if ep.Health == "down" {
 				out = append(out, fmt.Sprintf("%s: %d is not listening", qualifiedLabel(e.Label, ep.Name), ep.Port))
+			}
+			if ep.Health == "taken" {
+				out = append(out, fmt.Sprintf("%s: %d is taken by %s", qualifiedLabel(e.Label, ep.Name), ep.Port, ep.Holder))
 			}
 		}
 		if e.Start != nil && e.Start.Missing {
@@ -196,7 +276,7 @@ func CmdStatus(w io.Writer, args []string) (int, error) {
 	if deep {
 		probe = deepProbe
 	}
-	entries := statusTable(ctxs, probe, deep)
+	entries := statusTable(ctxs, probe, deep, listenerOf)
 
 	code := 0
 	failures := checkFailures(entries)
@@ -252,6 +332,9 @@ func statusRows(entries []statusEntry, verbose bool) []statusRow {
 				endpoint: fmt.Sprintf("%5d  %s", ep.Port, strings.TrimSuffix(ep.Host, ".localhost")),
 				start:    "·",
 				health:   ep.Health,
+			}
+			if ep.Health == "taken" {
+				row.health = "taken by " + ep.Holder
 			}
 			if i == 0 {
 				row.context = e.Label
@@ -322,13 +405,16 @@ func writeStatusTable(w io.Writer, entries []statusEntry, verbose bool) {
 
 // statusSummary is the one line that survives when the table scrolls away.
 func statusSummary(entries []statusEntry) string {
-	endpoints, up, down, noStart := 0, 0, 0, 0
+	endpoints, up, down, taken, noStart := 0, 0, 0, 0, 0
 	for _, e := range entries {
 		for _, ep := range e.Endpoints {
 			endpoints++
-			if ep.Health == "up" {
+			switch ep.Health {
+			case "up":
 				up++
-			} else {
+			case "taken":
+				taken++
+			default:
 				down++
 			}
 		}
@@ -340,8 +426,12 @@ func statusSummary(entries []statusEntry) string {
 		plural(endpoints, "endpoint"),
 		strconv.Itoa(up) + " up",
 		strconv.Itoa(down) + " down",
-		plural(noStart, "context") + " without a start routine",
 	}
+	// Taken only appears when it happens: it is the exception worth a word.
+	if taken > 0 {
+		parts = append(parts, strconv.Itoa(taken)+" taken")
+	}
+	parts = append(parts, plural(noStart, "context")+" without a start routine")
 	return strings.Join(parts, " · ")
 }
 

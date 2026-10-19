@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -612,3 +613,62 @@ func TestCLIPortsWriteNeedsAPathAndNotJSON(t *testing.T) {
 }
 
 var _ = os.Getenv
+
+// --- free ports -------------------------------------------------------------
+
+func TestFreePortsSkipsWhatIsDeclaredOrListening(t *testing.T) {
+	declared := map[int]bool{8100: true, 8102: true}
+	listening := func(port int) bool { return port == 8101 }
+	got := freePorts(declared, listening, 8100, 2)
+	if len(got) != 2 || got[0] != 8103 || got[1] != 8104 {
+		t.Errorf("freePorts = %v, want [8103 8104]", got)
+	}
+}
+
+func TestFreePortsStopsAtTheLastPort(t *testing.T) {
+	got := freePorts(map[int]bool{}, func(port int) bool { return port == 65535 }, 65534, 3)
+	if len(got) != 1 || got[0] != 65534 {
+		t.Errorf("freePorts = %v, want [65534]: there is nothing above 65535", got)
+	}
+}
+
+func TestCLIPortsFreeSuggestsUndeclaredPorts(t *testing.T) {
+	env := sharedState(t)
+	devProject(t, env, "circlead", "8100")
+
+	r := runLimen(t, tempDir(t), env, "ports", "--free", "3")
+	if r.code != 0 {
+		t.Fatalf("ports --free exit %d: %s", r.code, r.stderr)
+	}
+	lines := strings.Fields(r.stdout)
+	if len(lines) != 3 {
+		t.Fatalf("want three ports, one per line:\n%s", r.stdout)
+	}
+	for _, l := range lines {
+		port, err := strconv.Atoi(l)
+		if err != nil || port <= 8100 {
+			t.Errorf("%q: want a port above the declared 8100", l)
+		}
+	}
+
+	if r := runLimen(t, tempDir(t), env, "ports", "--free"); len(strings.Fields(r.stdout)) != 1 {
+		t.Errorf("--free alone suggests one port:\n%s", r.stdout)
+	}
+	r = runLimen(t, tempDir(t), env, "ports", "--free", "2", "--json")
+	var ports []int
+	if err := json.Unmarshal([]byte(r.stdout), &ports); err != nil || len(ports) != 2 {
+		t.Errorf("--free --json is an array of ports, got %q (%v)", r.stdout, err)
+	}
+}
+
+func TestCLIPortsFreeRejectsANonsenseCount(t *testing.T) {
+	env := sharedState(t)
+	for _, bad := range []string{"0", "x", "-3"} {
+		if r := runLimen(t, tempDir(t), env, "ports", "--free", bad); r.code == 0 || !strings.Contains(r.stderr, "--free") {
+			t.Errorf("--free %s: want an error naming --free, got exit %d: %s", bad, r.code, r.stderr)
+		}
+	}
+	if r := runLimen(t, tempDir(t), env, "ports", "--free", "--caddy"); r.code == 0 {
+		t.Error("--free lists ports; it has no Caddy rendering")
+	}
+}

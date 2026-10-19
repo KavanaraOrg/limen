@@ -378,6 +378,22 @@ hostname, and when a declaration cannot be read at all — so it can stand in
 front of `caddy reload` or in a pre-commit hook. `--json` carries the same table
 with a `conflict` field per entry.
 
+### Which port is still free? — `--free`
+
+```
+$ limen ports --free 3
+8100
+8101
+8103
+```
+
+`--free [n]` suggests `n` ports (one without a count) from 8100 upward — above
+the 8080–8099 that nearly every framework defaults to — that no context declares
+**and** nothing listens on right now. Both count: a declared port may be down
+today, and a listening one may belong to something no context describes.
+`--json` makes it an array. Pick one, declare it in `devEndpoints:`, and the
+allocation stays conflict-free from then on.
+
 ### Feeding Caddy from it
 
 `limen ports --caddy` renders the same table as reverse-proxy sites:
@@ -588,8 +604,16 @@ text-anonymizer       8000  anonymizer      docker compose up               up
 8 endpoints · 5 up · 3 down · 20 contexts without a start routine
 ```
 
-`up` / `down` is a TCP dial against `127.0.0.1:<port>` with a short timeout —
-the whole extent of the runtime limen looks at. A context with neither an
+A fourth count, `· n taken`, appears only when it happens.
+
+`up` / `down` is a TCP dial against `127.0.0.1:<port>` with a short timeout.
+For a port that is up, `lsof` names the listening process and its working
+directory; when that directory lies in **another** registered context's tree,
+the row reads `taken by <label>` instead of `up` — the case of two projects that
+both default to 8080, where a dial alone would happily report the wrong one as
+up. A listener limen cannot place in any context (Docker's port forwarder works
+in `/`, so does many a daemon) stays `up`; its command rides along in `--json`
+as `holder`, for information. Without `lsof` the column falls back to the dial. A context with neither an
 endpoint nor a start routine has no row; most registered contexts are document
 repositories, and the count in the last line says more about them than a table
 of crosses would. `--verbose` lists them anyway.
@@ -599,7 +623,7 @@ of crosses would. `--verbose` lists them anyway.
 | `--json` | one object per context with `endpoints[].health` and `start` — the shape clavo consumes and adds its session layer to |
 | `--deep` | where `service.yaml` declares `spec.healthcheck.path`, the primary endpoint gets an HTTP GET instead of a dial; anything below 400 is up |
 | `--verbose` | every discovered start candidate per context, and the silent contexts |
-| `--check` | exit 1 when a declared port is not listening, a declared start routine is gone from disk, or an endpoint cannot be read |
+| `--check` | exit 1 when a declared port is not listening or taken by another context, a declared start routine is gone from disk, or an endpoint cannot be read |
 
 The exit code is **0 by default, even with everything down** — a status that
 fails because a dev server is off is a status nobody runs. `--check` is the

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const version = "0.15.0"
+const version = "0.16.0"
 
 const usage = `limen ` + version + ` — context and identity per directory
 
@@ -25,15 +25,18 @@ const usage = `limen ` + version + ` — context and identity per directory
                         append a dated note to .limen/notes.md
   limen backlog [--json] open notes across all contexts — where something is to
                         be done; a line reading "- ✓ …" counts as checked off
-  limen ports [--json|--caddy] [--write <path>]
+  limen ports [--json|--caddy] [--write <path>] [--free [n]]
                         the development-endpoint allocation across all contexts;
                         --caddy renders the reverse-proxy sites, --write puts
                         them in a file only when they changed. Exit 1 when two
                         endpoints claim the same port or hostname — and then
-                        --write refuses, so a watching proxy never sees it
+                        --write refuses, so a watching proxy never sees it.
+                        --free suggests n ports from 8100 up that no context
+                        declares and nothing listens on
   limen status [--json] [--deep] [--verbose] [--check]
                         one row per context: endpoint, start routine, and
-                        whether the declared port is listening. --deep uses the
+                        whether the declared port is listening — or taken by
+                        another context's process. --deep uses the
                         healthcheck path from service.yaml, --verbose lists every
                         discovered start candidate, --check exits 1 when a
                         declared port is down or a declared start is gone

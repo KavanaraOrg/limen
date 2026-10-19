@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -342,12 +343,24 @@ func others(list []string, self string) []string {
 func CmdPorts(w io.Writer, args []string) (int, error) {
 	jsonOut, caddyOut := false, false
 	target := ""
+	free := 0
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; a {
 		case "--json":
 			jsonOut = true
 		case "--caddy":
 			caddyOut = true
+		case "--free":
+			// The count is optional: --free alone asks for one port.
+			free = 1
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+				i++
+				n, err := strconv.Atoi(args[i])
+				if err != nil || n < 1 {
+					return 0, fmt.Errorf("--free takes a count of at least 1, not %q", args[i])
+				}
+				free = n
+			}
 		case "--write":
 			// --write only ever writes the Caddy rendering; there is no other
 			// file shape worth putting on disk, so it implies --caddy rather
@@ -358,11 +371,14 @@ func CmdPorts(w io.Writer, args []string) (int, error) {
 			}
 			target, caddyOut = args[i], true
 		default:
-			return 0, fmt.Errorf("unknown flag %q for ports (--json, --caddy, --write <path>)", a)
+			return 0, fmt.Errorf("unknown flag %q for ports (--json, --caddy, --write <path>, --free [n])", a)
 		}
 	}
 	if jsonOut && caddyOut {
 		return 0, fmt.Errorf("--json and --caddy are two renderings of one table; pick one")
+	}
+	if free > 0 && caddyOut {
+		return 0, fmt.Errorf("--free suggests ports; it has no Caddy rendering")
 	}
 
 	ctxs, err := registeredContexts()
@@ -370,6 +386,26 @@ func CmdPorts(w io.Writer, args []string) (int, error) {
 		return 0, err
 	}
 	entries, complaints := portTable(ctxs)
+
+	if free > 0 {
+		declared := map[int]bool{}
+		for _, e := range entries {
+			declared[e.Port] = true
+		}
+		ports := freePorts(declared, listening, freeFrom, free)
+		if jsonOut {
+			b, err := json.Marshal(ports)
+			if err != nil {
+				return 0, err
+			}
+			fmt.Fprintln(w, string(b))
+			return 0, nil
+		}
+		for _, p := range ports {
+			fmt.Fprintln(w, p)
+		}
+		return 0, nil
+	}
 
 	code := 0
 	if len(complaints) > 0 {
@@ -418,6 +454,36 @@ func CmdPorts(w io.Writer, args []string) (int, error) {
 		writePortTable(w, entries, complaints)
 	}
 	return code, nil
+}
+
+// freeFrom is where the search for a free port starts: above 8080–8099, the
+// range nearly every framework defaults to, so a suggestion does not collide
+// with the next project started with its defaults.
+const freeFrom = 8100
+
+// freePorts suggests up to n ports from `from` upward that no context declares
+// and nothing listens on right now. Both count: a declared port may be down
+// today, and a listening one may belong to something no context describes.
+func freePorts(declared map[int]bool, inUse func(int) bool, from, n int) []int {
+	out := []int{}
+	for port := from; port <= 65535 && len(out) < n; port++ {
+		if !declared[port] && !inUse(port) {
+			out = append(out, port)
+		}
+	}
+	return out
+}
+
+// listening dials the port on both loopback addresses: a dev server bound to
+// ::1 alone is as much in the way as one bound to 127.0.0.1.
+func listening(port int) bool {
+	for _, host := range []string{"127.0.0.1", "::1"} {
+		if conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), dialTimeout); err == nil {
+			conn.Close()
+			return true
+		}
+	}
+	return false
 }
 
 // reasons gathers what makes a table unfit to be written, for one error line.
