@@ -15,7 +15,7 @@ agents.
 
 ## Inherited norms
 
-This directory inherits `kavanara-baseline@4.0.0` (see `.limen/meta.yaml`). The
+This directory inherits `kavanara-baseline@5.0.0` (see `.limen/meta.yaml`). The
 skills are materialised in `.claude/skills/`, the reasoning as ADRs in
 `docs/adr/`. In short:
 
@@ -41,6 +41,12 @@ skills are materialised in `.claude/skills/`, the reasoning as ADRs in
 - **ADR-0007** — services work headless: every capability reachable through the
   public interface without the frontend. limen is a CLI with no frontend, so
   this one does not bind here either.
+- **ADR-0008** — every build produces an SBOM and every component allows
+  commercial use. limen is Apache-2.0; `make sbom` writes `limen.cdx.json` (Go
+  standard library plus every module dependency), and `licence_test.go` fails
+  `make test` on any dependency under strong copyleft, a not-for-commercial-use
+  licence or no licence file. limen has no module dependency today; check the
+  licence before adding one.
 
 `limen profile check` proves the copies are unchanged — exit 1 on drift. Do not
 edit the files under `.claude/skills/` or `docs/adr/` by hand: `limen profile
