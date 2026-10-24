@@ -2,13 +2,18 @@ BINARY  := limen
 PREFIX  ?= $(HOME)/.local/bin
 GOFLAGS := -trimpath -ldflags "-s -w"
 
-.PHONY: all build test test-go test-wezterm test-v vet fmt cover bench install install-wezterm uninstall clean
+.PHONY: all build sbom test test-go test-wezterm test-v vet fmt cover bench install install-wezterm uninstall clean
 
-all: vet test build
+all: vet test build sbom
 
 build:
 	go build $(GOFLAGS) -o $(BINARY) .
 	@echo "built ./$(BINARY) ($$(du -h $(BINARY) | cut -f1))"
+
+# CycloneDX SBOM of the binary (kavanara-baseline ADR-0008). The licence gate
+# itself is licence_test.go, so `make test` runs it.
+sbom:
+	@scripts/sbom.sh
 
 # Go tests plus the WezTerm Lua module, which is tested inside WezTerm's own
 # Lua runtime because there is no standalone interpreter to test it with.
@@ -83,4 +88,4 @@ uninstall:
 	rm -f $(PREFIX)/$(BINARY)
 
 clean:
-	rm -f $(BINARY) coverage.out
+	rm -f $(BINARY) coverage.out limen.cdx.json
