@@ -11,3 +11,6 @@ profiles: kavanara-baseline@4.0.0
 # Where `limen profile sync` materialises them. Both have defaults
 # (.claude/skills and docs/adr); only the deviation is written here.
 adrTarget: docs/adr
+
+# vault-keeper: project card in the K3 Brain vault (10_Projekte / 30_Services)
+projectId: P-0013
