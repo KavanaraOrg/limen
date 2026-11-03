@@ -672,3 +672,68 @@ func TestCLIPortsFreeRejectsANonsenseCount(t *testing.T) {
 		t.Error("--free lists ports; it has no Caddy rendering")
 	}
 }
+
+// A development service that only speaks HTTPS with its own CA (a local stack
+// with generated certificates): the proxy has to connect with TLS and trust
+// exactly that CA, not skip verification.
+func TestEndpointUpstreamTLSWithOwnCA(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory")
+	}
+	c := &Context{Root: "/tmp/b", Label: "tessera-basis", Source: SourceLimen}
+	c.set("devendpoints", "8543 stream ca=~/.config/b/ca.crt, plain=9000 tls")
+
+	dev := c.DevView()
+	if len(dev.Endpoints) != 2 {
+		t.Fatalf("endpoints = %+v, invalid = %v", dev.Endpoints, c.DevInvalid())
+	}
+	first := dev.Endpoints[0]
+	if !first.TLS || !first.Stream {
+		t.Errorf("ca= must imply tls and keep stream: %+v", first)
+	}
+	if want := filepath.Join(home, ".config/b/ca.crt"); first.CA != want {
+		t.Errorf("CA = %q, want %q (~ expanded: Caddy does not expand it)", first.CA, want)
+	}
+	if !dev.Endpoints[1].TLS || dev.Endpoints[1].CA != "" {
+		t.Errorf("tls without ca= = %+v", dev.Endpoints[1])
+	}
+}
+
+func TestEndpointRejectsAnEmptyCA(t *testing.T) {
+	c := &Context{Root: "/tmp/b", Label: "b", Source: SourceLimen}
+	c.set("devendpoints", "8543 ca=")
+	if len(c.DevInvalid()) != 1 {
+		t.Errorf("an empty ca= must be reported, got %v", c.DevInvalid())
+	}
+}
+
+func TestCLIPortsCaddyfileRendersTLSUpstream(t *testing.T) {
+	env := sharedState(t)
+	root := tempDir(t)
+	write(t, filepath.Join(root, ".limen", "limen.yaml"),
+		"label: tessera-basis\ndevEndpoints: 8543 stream ca=/etc/basis/ca.crt, raw=9443 tls\n")
+	runLimen(t, root, env, "register")
+
+	r := runLimen(t, tempDir(t), env, "ports", "--caddy")
+	if r.code != 0 {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	for _, want := range []string{
+		"tessera-basis.localhost {",
+		"\treverse_proxy https://127.0.0.1:8543 {\n",
+		"\t\tflush_interval -1\n",
+		"\t\ttransport http {\n",
+		"\t\t\ttls_trust_pool file /etc/basis/ca.crt\n",
+		"tessera-basis-raw.localhost {",
+		"\treverse_proxy https://127.0.0.1:9443 {\n",
+		"\t\t\ttls\n",
+	} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("Caddyfile missing %q:\n%s", want, r.stdout)
+		}
+	}
+	if strings.Contains(r.stdout, "insecure") {
+		t.Errorf("verification must never be skipped:\n%s", r.stdout)
+	}
+}
