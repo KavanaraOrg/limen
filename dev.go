@@ -54,6 +54,13 @@ type Endpoint struct {
 	// arrive in one lump at the end of the request without it, which looks
 	// exactly like a hung server.
 	Stream bool `json:"stream,omitempty"`
+	// TLS: the service itself only speaks HTTPS (a local stack with generated
+	// certificates). The proxy connects with TLS and verifies the certificate.
+	TLS bool `json:"tls,omitempty"`
+	// CA is the certificate the proxy trusts for that connection, an absolute
+	// path (~ is expanded here: Caddy does not). Setting it implies TLS. Without
+	// it the system roots apply. Verification is never switched off.
+	CA string `json:"ca,omitempty"`
 }
 
 // Dev is the resolved development endpoint set. Nil when nothing usable is
@@ -165,11 +172,20 @@ func parseEndpoint(item, base string) (Endpoint, error) {
 		Upstream: fmt.Sprintf("127.0.0.1:%d", port),
 	}
 	for _, flag := range fields[1:] {
-		switch strings.ToLower(flag) {
+		key, value, hasValue := strings.Cut(flag, "=")
+		switch strings.ToLower(key) {
 		case "stream":
 			ep.Stream = true
+		case "tls":
+			ep.TLS = true
+		case "ca":
+			if !hasValue || value == "" {
+				return Endpoint{}, fmt.Errorf("ca= needs the path of a certificate")
+			}
+			ep.TLS = true
+			ep.CA = expandHome(value)
 		default:
-			return Endpoint{}, fmt.Errorf("unknown flag %q (stream)", flag)
+			return Endpoint{}, fmt.Errorf("unknown flag %q (stream, tls, ca=<path>)", flag)
 		}
 	}
 	return ep, nil
@@ -261,6 +277,8 @@ type portEntry struct {
 	Host     string `json:"host"`
 	Upstream string `json:"upstream"`
 	Stream   bool   `json:"stream,omitempty"`
+	TLS      bool   `json:"tls,omitempty"`
+	CA       string `json:"ca,omitempty"`
 	Conflict string `json:"conflict,omitempty"`
 }
 
@@ -277,6 +295,7 @@ func portTable(ctxs []*Context) (entries []portEntry, complaints []string) {
 			entries = append(entries, portEntry{
 				Root: c.Root, Label: c.Label, Name: ep.Name,
 				Port: ep.Port, Host: ep.Host, Upstream: ep.Upstream, Stream: ep.Stream,
+				TLS: ep.TLS, CA: ep.CA,
 			})
 		}
 	}
@@ -551,6 +570,9 @@ func writePortTable(w io.Writer, entries []portEntry, complaints []string) {
 		if e.Stream {
 			flags = "stream"
 		}
+		if e.TLS {
+			flags += " tls"
+		}
 		fmt.Fprintf(w, "%-*s  %5d  %-28s  %s  %s\n", width, e.qualified(), e.Port, e.Host, flags, e.Root)
 		if e.Conflict != "" {
 			conflicts++
@@ -592,17 +614,46 @@ func writeCaddyfile(w io.Writer, entries []portEntry, complaints []string) {
 		}
 		fmt.Fprintf(w, "# %s — %s\n", e.qualified(), e.Root)
 		fmt.Fprintf(w, "%s {\n", e.Host)
-		if e.Stream {
-			// Without this the proxy buffers, and server-sent events arrive in
-			// one lump at the end of the request — indistinguishable from a
-			// hung server.
-			fmt.Fprintf(w, "\treverse_proxy %s {\n", e.Upstream)
-			fmt.Fprintln(w, "\t\tflush_interval -1")
-			fmt.Fprintln(w, "\t}")
+		upstream := e.Upstream
+		if e.TLS {
+			upstream = "https://" + upstream
+		}
+		if !e.Stream && !e.TLS {
+			fmt.Fprintf(w, "\treverse_proxy %s\n", upstream)
 		} else {
-			fmt.Fprintf(w, "\treverse_proxy %s\n", e.Upstream)
+			fmt.Fprintf(w, "\treverse_proxy %s {\n", upstream)
+			if e.Stream {
+				// Without this the proxy buffers, and server-sent events arrive in
+				// one lump at the end of the request — indistinguishable from a
+				// hung server.
+				fmt.Fprintln(w, "\t\tflush_interval -1")
+			}
+			if e.TLS {
+				fmt.Fprintln(w, "\t\ttransport http {")
+				if e.CA != "" {
+					fmt.Fprintf(w, "\t\t\ttls_trust_pool file %s\n", e.CA)
+				} else {
+					fmt.Fprintln(w, "\t\t\ttls")
+				}
+				fmt.Fprintln(w, "\t\t}")
+			}
+			fmt.Fprintln(w, "\t}")
 		}
 		fmt.Fprintln(w, "}")
 		fmt.Fprintln(w)
 	}
+}
+
+// expandHome turns a leading ~/ into the home directory. A path that cannot be
+// expanded is returned unchanged; Caddy then reports it, which is clearer than
+// a guess.
+func expandHome(p string) string {
+	if !strings.HasPrefix(p, "~/") {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return p
+	}
+	return filepath.Join(home, p[2:])
 }
