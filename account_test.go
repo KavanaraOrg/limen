@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -148,7 +149,8 @@ func TestAccountOverrideAppliesOutsideAContext(t *testing.T) {
 	}
 	mustRun(t, dir, env, "account", "use", "b")
 	r := mustRun(t, dir, env, "shell")
-	want := "export CLAUDE_CONFIG_DIR='" + filepath.Join(home, ".claude-b") + "'\n"
+	b := shellQuote(filepath.Join(home, ".claude-b"))
+	want := "export CLAUDE_CONFIG_DIR=" + b + "\nexport LIMEN_ACCOUNT_OVERRIDE=" + b + "\n"
 	if r.stdout != want {
 		t.Errorf("outside a context only the account is exported:\ngot  %q\nwant %q", r.stdout, want)
 	}
@@ -323,6 +325,273 @@ func TestHookReappliesAfterAnAccountCommand(t *testing.T) {
 		r := mustRun(t, dir, nil, "hook", sh)
 		if !strings.Contains(r.stdout, "limen()") || !strings.Contains(r.stdout, "command limen") {
 			t.Errorf("%s hook should wrap limen so account changes reach the current shell:\n%s", sh, r.stdout)
+		}
+	}
+}
+
+// --- Regression tests for the red-team pass of 2026-11-21
+// (docs/security/red-team-2026-11-21-account.md). Each names its finding.
+
+func slugDir(cfg, cwd string) string {
+	return filepath.Join(cfg, "projects", claudeProjectSlug(cwd))
+}
+
+// F-1: a transcript whose name is no session id must never be picked; ".."
+// once made the side-folder copy take every project of the account along.
+func TestSwapIgnoresTranscriptsWithInvalidIds(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	a, b := filepath.Join(home, ".claude-a"), filepath.Join(home, ".claude-b")
+	now := time.Now()
+	session(t, a, root, "good", "good\n", now.Add(-time.Hour))
+	session(t, a, root, "..", "dots\n", now)
+	session(t, a, root, ".", "dot\n", now)
+	write(t, filepath.Join(a, "projects", "other", "o.jsonl"), "foreign\n")
+
+	mustRun(t, root, env, "account", "swap", "b")
+	if _, err := os.Stat(filepath.Join(slugDir(b, root), "good.jsonl")); err != nil {
+		t.Errorf("the valid session should be the one moved: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(b, "projects", "other")); !os.IsNotExist(err) {
+		t.Error("another project of the account must never be copied")
+	}
+}
+
+// F-1: every file of the side folder is held to the newer-copy check.
+func TestSwapRefusesANewerSideFileWithoutForce(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	a, b := filepath.Join(home, ".claude-a"), filepath.Join(home, ".claude-b")
+	now := time.Now()
+	session(t, a, root, "s", "s\n", now)
+	side := filepath.Join(slugDir(a, root), "s", "subagents", "x.jsonl")
+	write(t, side, "old\n")
+	os.Chtimes(side, now.Add(-2*time.Hour), now.Add(-2*time.Hour))
+	write(t, filepath.Join(slugDir(b, root), "s", "subagents", "x.jsonl"), "newer in b\n")
+
+	if r := runLimen(t, root, env, "account", "swap", "b"); r.code == 0 {
+		t.Fatal("a newer side file in the target must refuse the swap")
+	}
+	if _, err := os.Stat(filepath.Join(slugDir(b, root), "s.jsonl")); !os.IsNotExist(err) {
+		t.Error("a refused swap must copy nothing")
+	}
+}
+
+// F-11: an empty or suffix-only --session is an error, not "the latest".
+func TestSwapRejectsAnEmptySessionId(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	session(t, filepath.Join(home, ".claude-a"), root, "s", "s\n", time.Now())
+	for _, id := range []string{"--session=", "--session=.jsonl"} {
+		if r := runLimen(t, root, env, "account", "swap", "b", id); r.code == 0 {
+			t.Errorf("%s must be refused", id)
+		}
+	}
+}
+
+// F-2: a relative or in-repository claudeConfigDir lets a cloned repo choose
+// the account; it is not exported and is reported instead.
+func TestContextRejectsARelativeOrInRepoClaudeDir(t *testing.T) {
+	home, env := accountHome(t)
+	for _, val := range []string{"./.cfg", ".cfg", "ROOT/.cfg"} {
+		root := filepath.Join(home, "repo")
+		os.RemoveAll(root)
+		write(t, filepath.Join(root, ".limen", "limen.yaml"), "claudeConfigDir: "+strings.Replace(val, "ROOT", root, 1)+"\n")
+		os.MkdirAll(filepath.Join(root, ".cfg"), 0o755)
+		if s := mustRun(t, root, env, "shell").stdout; strings.Contains(s, "CLAUDE_CONFIG_DIR") {
+			t.Errorf("%s must not be exported:\n%s", val, s)
+		}
+		if s := mustRun(t, root, env, "show").stdout; !strings.Contains(s, "!!") {
+			t.Errorf("%s should be reported in show:\n%s", val, s)
+		}
+	}
+}
+
+// F-2: the swap source is held to the same standard as a target; anything
+// else must be named with --from.
+func TestSwapRejectsAnUnconventionalSource(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	weird := filepath.Join(root, ".cfg")
+	session(t, weird, root, "s", "planted\n", time.Now())
+	session(t, filepath.Join(home, ".claude-a"), root, "s", "real\n", time.Now().Add(-time.Hour))
+
+	r := runLimen(t, root, append(env, "CLAUDE_CONFIG_DIR="+weird), "account", "swap", "b")
+	if r.code == 0 || !strings.Contains(r.stderr, "--from") {
+		t.Fatalf("an unconventional source must be refused naming --from: %d %s", r.code, r.stderr)
+	}
+	mustRun(t, root, append(env, "CLAUDE_CONFIG_DIR="+weird), "account", "swap", "b", "--from", "a")
+	if body, _ := os.ReadFile(filepath.Join(slugDir(filepath.Join(home, ".claude-b"), root), "s.jsonl")); string(body) != "real\n" {
+		t.Errorf("--from a copies from a, got %q", body)
+	}
+}
+
+// F-3: a symlinked transcript is never followed.
+func TestSwapDoesNotFollowASymlinkedTranscript(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	a, b := filepath.Join(home, ".claude-a"), filepath.Join(home, ".claude-b")
+	secret := filepath.Join(home, "secret")
+	write(t, secret, "secret\n")
+	session(t, a, root, "real", "real\n", time.Now().Add(-time.Hour))
+	if err := os.Symlink(secret, filepath.Join(slugDir(a, root), "leak.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, root, env, "account", "swap", "b")
+	if _, err := os.Lstat(filepath.Join(slugDir(b, root), "leak.jsonl")); !os.IsNotExist(err) {
+		t.Error("a symlinked transcript must not be picked")
+	}
+	if r := runLimen(t, root, append(env, "CLAUDE_CONFIG_DIR="+a), "account", "swap", "default", "--session", "leak"); r.code == 0 {
+		t.Error("a symlinked transcript named with --session must be refused")
+	}
+}
+
+// F-4: temp files are not at a fixed, plantable name.
+func TestWritesDoNotFollowAPlantedTempSymlink(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	a, b := filepath.Join(home, ".claude-a"), filepath.Join(home, ".claude-b")
+	victim := filepath.Join(home, "victim")
+	write(t, victim, "intact\n")
+	os.MkdirAll(filepath.Join(home, "state", "limen"), 0o700)
+	os.Symlink(victim, filepath.Join(home, "state", "limen", "account.tmp"))
+	session(t, a, root, "s", "s\n", time.Now())
+	os.MkdirAll(slugDir(b, root), 0o700)
+	os.Symlink(victim, filepath.Join(slugDir(b, root), "s.jsonl.limen-tmp"))
+
+	mustRun(t, root, env, "account", "use", "b")
+	mustRun(t, root, append(env, "CLAUDE_CONFIG_DIR="+a), "account", "swap", "b")
+	if body, _ := os.ReadFile(victim); string(body) != "intact\n" {
+		t.Errorf("a planted symlink was written through: %q", body)
+	}
+	st, err := os.Lstat(filepath.Join(home, "state", "limen", "account"))
+	if err != nil || !st.Mode().IsRegular() {
+		t.Errorf("the override must be a regular file: %v %v", st, err)
+	}
+	// F-12: the override is private to the user.
+	if st != nil && st.Mode().Perm() != 0o600 {
+		t.Errorf("override mode %v, want 0600", st.Mode().Perm())
+	}
+	if d, _ := os.Stat(filepath.Join(home, "state", "limen")); d == nil || d.Mode().Perm() != 0o700 {
+		t.Errorf("state directory mode, want 0700: %v", d)
+	}
+}
+
+// F-5: a symlinked projects/ or slug folder in the target is refused.
+func TestSwapRefusesASymlinkedTargetFolder(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	a, b := filepath.Join(home, ".claude-a"), filepath.Join(home, ".claude-b")
+	session(t, a, root, "s", "s\n", time.Now())
+	outside := filepath.Join(home, "outside")
+	os.MkdirAll(outside, 0o755)
+	os.MkdirAll(filepath.Join(b, "projects"), 0o700)
+	os.Symlink(outside, slugDir(b, root))
+
+	if r := runLimen(t, root, env, "account", "swap", "b"); r.code == 0 {
+		t.Error("a symlinked target folder must be refused")
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Errorf("nothing may land outside the account: %v", entries)
+	}
+}
+
+// F-8: what the user is told to paste is quoted and free of control characters.
+func TestSwapPrintsAQuotedPrintableResume(t *testing.T) {
+	home, env := accountHome(t)
+	root := filepath.Join(home, "we ird;x\x1b[31m")
+	write(t, filepath.Join(root, ".limen", "limen.yaml"), "claudeConfigDir: ~/.claude-a\n")
+	session(t, filepath.Join(home, ".claude-a"), root, "s", "s\n", time.Now())
+	r := mustRun(t, root, env, "account", "swap", "b")
+	if strings.ContainsRune(r.stdout, '\x1b') {
+		t.Errorf("control characters reached the terminal:\n%q", r.stdout)
+	}
+	if !strings.Contains(r.stdout, "cd '") {
+		t.Errorf("the working directory should be printed quoted:\n%s", r.stdout)
+	}
+}
+
+// F-9: a broken override file is ignored and reported, never exported.
+func TestABrokenOverrideIsIgnoredAndReported(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	for _, bad := range []string{"relative/dir", filepath.Join(home, "missing"), filepath.Join(home, ".claude-b") + "\x1b[2J"} {
+		write(t, filepath.Join(home, "state", "limen", "account"), bad+"\n")
+		if s := mustRun(t, root, env, "shell").stdout; !strings.Contains(s, "CLAUDE_CONFIG_DIR='"+filepath.Join(home, ".claude-a")+"'") {
+			t.Errorf("override %q must be ignored:\n%s", bad, s)
+		}
+		if s := mustRun(t, root, env, "account").stdout; !strings.Contains(s, "invalid") || strings.ContainsRune(s, '\x1b') {
+			t.Errorf("override %q should be reported, printable:\n%q", bad, s)
+		}
+	}
+}
+
+// F-10: use accepts Claude config directories, not any directory.
+func TestUseRefusesDirectoriesThatAreNoAccount(t *testing.T) {
+	home, env := accountHome(t)
+	root := accountProject(t, home)
+	os.MkdirAll(filepath.Join(home, "plain"), 0o755)
+	for _, name := range []string{"/", "~", home, "~/plain", "b ", " b", "~/.claude-b "} {
+		if r := runLimen(t, root, env, "account", "use", name); r.code == 0 {
+			t.Errorf("use %q must be refused", name)
+		}
+	}
+	// A directory elsewhere that carries a Claude config is fine.
+	custom := filepath.Join(home, "cfg", "work")
+	write(t, filepath.Join(custom, "settings.json"), "{}")
+	mustRun(t, root, env, "account", "use", custom)
+}
+
+// F-7: an override cleared in another shell does not linger on the next cd.
+func TestShellUnsetsAnOverrideThatWasCleared(t *testing.T) {
+	home, env := accountHome(t)
+	dir := filepath.Join(home, "elsewhere")
+	os.MkdirAll(dir, 0o755)
+	b := filepath.Join(home, ".claude-b")
+
+	mustRun(t, dir, env, "account", "use", "b")
+	if s := mustRun(t, dir, env, "shell").stdout; !strings.Contains(s, "export LIMEN_ACCOUNT_OVERRIDE=") {
+		t.Errorf("an active override carries its marker:\n%s", s)
+	}
+	mustRun(t, dir, env, "account", "clear")
+	s := mustRun(t, dir, append(env, "LIMEN_ACCOUNT_OVERRIDE="+b, "CLAUDE_CONFIG_DIR="+b), "shell").stdout
+	if !strings.Contains(s, "unset CLAUDE_CONFIG_DIR") || !strings.Contains(s, "unset LIMEN_ACCOUNT_OVERRIDE") {
+		t.Errorf("a cleared override is unset:\n%s", s)
+	}
+	// A CLAUDE_CONFIG_DIR limen did not set is left alone.
+	s = mustRun(t, dir, append(env, "LIMEN_ACCOUNT_OVERRIDE="+b, "CLAUDE_CONFIG_DIR=/mine"), "shell").stdout
+	if strings.Contains(s, "unset CLAUDE_CONFIG_DIR") {
+		t.Errorf("a value the user set must survive:\n%s", s)
+	}
+}
+
+// F-6: the hook wrapper keeps the shell's account when the command fails or
+// is a dry run.
+func TestHookWrapperKeepsTheAccountOnFailureAndDryRun(t *testing.T) {
+	home, env := accountHome(t)
+	dir := filepath.Join(home, "elsewhere")
+	os.MkdirAll(dir, 0o755)
+	a := filepath.Join(home, ".claude-a")
+	script := `eval "$(limen hook bash)"
+export CLAUDE_CONFIG_DIR=` + shellQuote(a) + `
+limen account use typo >/dev/null 2>&1; echo "after-typo=$CLAUDE_CONFIG_DIR"
+limen account swap b --dry-run >/dev/null 2>&1; echo "after-dry=$CLAUDE_CONFIG_DIR"
+limen account use b >/dev/null; echo "after-use=$CLAUDE_CONFIG_DIR"
+limen account clear >/dev/null; echo "after-clear=$CLAUDE_CONFIG_DIR"
+`
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", script)
+	cmd.Dir = dir
+	cmd.Env = append([]string{"PATH=" + filepath.Dir(binPath) + ":" + os.Getenv("PATH")}, env...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"after-typo=" + a, "after-dry=" + a,
+		"after-use=" + filepath.Join(home, ".claude-b"), "after-clear=\n",
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("missing %q in:\n%s", want, out)
 		}
 	}
 }

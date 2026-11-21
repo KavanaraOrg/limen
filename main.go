@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const version = "0.17.0"
+const version = "0.17.1"
 
 const usage = `limen ` + version + ` — context and identity per directory
 
@@ -28,7 +28,7 @@ const usage = `limen ` + version + ` — context and identity per directory
                         machine-wide switch: <name> is ~/.claude-<name>, and it
                         beats every project's claudeConfigDir until
   limen account clear   lifts it again
-  limen account swap <name> [--session <id>] [--dry-run] [--force]
+  limen account swap <name> [--from <account>] [--session <id>] [--dry-run] [--force]
                         carry this directory's latest (or the named) session
                         transcript into another account, switch to it, and print
                         the claude --resume that continues it there
@@ -149,11 +149,9 @@ func run(args []string, stdout, stderr *os.File) int {
 	case "shell":
 		// Silence and exit 0 without a context: this runs from .zshrc.
 		RenderShell(out, ctxOrNil(ctx, found), resolver)
-		if !found && override != "" {
-			// The account switch is machine-wide, so it holds outside a
-			// project too; it is the only line written there.
-			fmt.Fprintf(out, "export CLAUDE_CONFIG_DIR=%s\n", shellQuote(override))
-		}
+		// The account switch is machine-wide, so it holds outside a project
+		// too, and a cleared one is unset again (account.go).
+		shellAccountLines(out, ctxOrNil(ctx, found), override)
 		if found {
 			// Crossing the threshold is what makes a root known: the hook runs
 			// here on every cd, so every context ever entered appears in
