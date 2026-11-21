@@ -141,10 +141,31 @@ limen.apply(cfg)
 check('apply disables the fancy tab bar', cfg.use_fancy_tab_bar, false)
 check('apply widens tabs', cfg.tab_max_width, 48)
 
+-- ── new panes start through limen account exec, so they get the account's
+-- token without it ever passing through this config or a file ──────────
+limen.bin = '/opt/custom/limen'
+local wrapped = limen.with_account({ 'claude', '--resume', 'x' })
+check('with_account bin', wrapped[1], '/opt/custom/limen')
+check('with_account sub', wrapped[2] .. ' ' .. wrapped[3] .. ' ' .. wrapped[4], 'account exec --')
+check('with_account keeps args', wrapped[5] .. ' ' .. wrapped[6] .. ' ' .. wrapped[7], 'claude --resume x')
+local cfg2 = {}
+limen.apply(cfg2)
+check('apply wraps the default shell', cfg2.default_prog and cfg2.default_prog[2], 'account')
+check('the wrapped shell is a login shell', cfg2.default_prog and cfg2.default_prog[#cfg2.default_prog], '-l')
+local cfg3 = { default_prog = { '/bin/fish' } }
+limen.apply(cfg3)
+check('apply wraps a default_prog of its own', cfg3.default_prog[5], '/bin/fish')
+limen.account_env = false
+local cfg4 = {}
+limen.apply(cfg4)
+check('account_env = false leaves default_prog alone', cfg4.default_prog, nil)
+limen.account_env = true
+limen.bin = 'limen'
+
 -- ── report ───────────────────────────────────────────────────────────
 if #failures > 0 then
   error('LIMEN-SELFTEST-FAIL\n  ' .. table.concat(failures, '\n  '))
 end
-wezterm.log_info('LIMEN-SELFTEST-OK ' .. tostring(31) .. ' checks passed')
+wezterm.log_info('LIMEN-SELFTEST-OK ' .. tostring(40) .. ' checks passed')
 
 return {}
