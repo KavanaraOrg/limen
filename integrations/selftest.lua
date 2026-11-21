@@ -61,6 +61,35 @@ check('label from actor', limen.tab_label({ actor = 'Leo' }), 'Leo')
 check('label fallback', limen.tab_label({}), 'limen')
 check('label nil ctx', limen.tab_label(nil), nil)
 
+-- ── tab title items: label, optional suffix hook, title ───────────────
+local function texts(items)
+  local out = {}
+  for _, it in ipairs(items or {}) do
+    if type(it) == 'table' and it.Text then table.insert(out, it.Text) end
+  end
+  return table.concat(out)
+end
+local fake_tab = { tab_index = 0, active_pane = { pane_id = 7 } }
+
+check('tab without ctx or suffix', texts(limen.tab_title_items(fake_tab, nil, 'zsh')), ' 1: zsh ')
+check('tab with ctx, no suffix',
+  texts(limen.tab_title_items(fake_tab, { label = 'limen' }, 'zsh')), ' limen  zsh ')
+
+limen.tab_suffix = function(tab, ctx)
+  return '● acct-' .. tab.active_pane.pane_id .. (ctx and '-ctx' or ''), '#ff0000'
+end
+check('suffix after label',
+  texts(limen.tab_title_items(fake_tab, { label = 'limen' }, 'zsh')), ' limen  ● acct-7-ctx zsh ')
+check('suffix without ctx', texts(limen.tab_title_items(fake_tab, nil, 'zsh')), ' 1: ● acct-7 zsh ')
+
+limen.tab_suffix = function() return '' end
+check('empty suffix shows nothing', texts(limen.tab_title_items(fake_tab, nil, 'zsh')), ' 1: zsh ')
+
+-- A broken hook must not break the tab bar.
+limen.tab_suffix = function() error('boom') end
+check('failing suffix is ignored', texts(limen.tab_title_items(fake_tab, nil, 'zsh')), ' 1: zsh ')
+limen.tab_suffix = nil
+
 -- ── the right status: order, omission, markers ────────────────────────
 check('full status', join(limen.status_parts({
   actor = 'Matthias Wegner',

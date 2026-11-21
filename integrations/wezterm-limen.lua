@@ -161,22 +161,50 @@ function M.read_context(cwd)
   return parsed
 end
 
+--- Optional hook, set from wezterm.lua: function(tab, ctx) -> text, color.
+--- Its text is shown as a segment right after the label (ctx may be nil, then
+--- after the tab number). Use it for things only wezterm.lua knows, such as
+--- which Claude account a pane was started with. nil or '' shows nothing.
+M.tab_suffix = nil
+
+local function suffix_items(tab, ctx)
+  if not M.tab_suffix then return {} end
+  local ok, text, color = pcall(M.tab_suffix, tab, ctx)
+  if not ok or not text or text == '' then return {} end
+  return {
+    'ResetAttributes',
+    { Foreground = { Color = color or M.dim_color } },
+    { Text = ' ' .. text },
+    'ResetAttributes',
+  }
+end
+
+--- The tab title as wezterm.format items: coloured label (or tab number),
+--- the optional M.tab_suffix segment, then the title.
+--- Pure and exported so the self-test can assert on it without a terminal.
+function M.tab_title_items(tab, ctx, title)
+  local items
+  if not ctx then
+    items = { { Text = ' ' .. tab.tab_index + 1 .. ':' } }
+  else
+    items = {
+      { Background = { Color = M.color_for(ctx) } },
+      { Foreground = { Color = '#1a1a1a' } },
+      { Text = ' ' .. M.tab_label(ctx) .. ' ' },
+    }
+  end
+  for _, it in ipairs(suffix_items(tab, ctx)) do table.insert(items, it) end
+  table.insert(items, 'ResetAttributes')
+  table.insert(items, { Text = ' ' .. title .. ' ' })
+  return items
+end
+
 wezterm.on('format-tab-title', function(tab, tabs, panes, config, hover, max_width)
   local pane = tab.active_pane
   local ctx = M.read_context(cwd_from_pane(pane))
   local title = tab.tab_title
   if title == nil or title == '' then title = pane.title end
-
-  if not ctx then
-    return { { Text = ' ' .. tab.tab_index + 1 .. ': ' .. title .. ' ' } }
-  end
-  return {
-    { Background = { Color = M.color_for(ctx) } },
-    { Foreground = { Color = '#1a1a1a' } },
-    { Text = ' ' .. M.tab_label(ctx) .. ' ' },
-    'ResetAttributes',
-    { Text = ' ' .. title .. ' ' },
-  }
+  return M.tab_title_items(tab, ctx, title)
 end)
 
 wezterm.on('update-right-status', function(window, pane)
