@@ -119,11 +119,33 @@ function M.status_parts(ctx)
   return parts
 end
 
-local function cwd_from_pane(pane)
-  local uri = pane:get_current_working_dir()
+-- WezTerm's objects raise on an unknown field instead of returning nil.
+local function field(obj, key)
+  local ok, v = pcall(function() return obj[key] end)
+  if ok then return v end
+  return nil
+end
+
+--- The pane's working directory as a path, or nil.
+--- Accepts both shapes WezTerm hands out: a Pane object (status events) with a
+--- get_current_working_dir() method, and the PaneInformation table that
+--- format-tab-title passes as tab.active_pane, which has a
+--- current_working_dir field instead. Exported for the self-test.
+function M.cwd_from_pane(pane)
+  if not pane then return nil end
+  local uri
+  local getter = field(pane, 'get_current_working_dir')
+  if type(getter) == 'function' then
+    local ok, v = pcall(getter, pane)
+    if ok then uri = v end
+  else
+    uri = field(pane, 'current_working_dir')
+  end
   if not uri then return nil end
-  if type(uri) == 'userdata' and uri.file_path then
-    return uri.file_path
+  if type(uri) ~= 'string' then
+    local path = field(uri, 'file_path')
+    if path and path ~= '' then return path end
+    return nil
   end
   if type(uri) == 'string' then
     return uri:match('^file://[^/]*(/.*)$')
@@ -133,10 +155,16 @@ end
 
 --- Reads `limen json` for a directory. Returns nil when there is no context,
 --- which is a normal state and not an error.
-function M.read_context(cwd)
+--- cache_only = true never spawns a process and returns whatever the cache
+--- holds, stale or not: format-tab-title runs where WezTerm forbids child
+--- processes, and the status events keep the cache fresh for it.
+function M.read_context(cwd, cache_only)
   if not cwd then return nil end
   local now = os.time()
   local hit = cache[cwd]
+  if cache_only then
+    return hit and hit.ctx or nil
+  end
   if hit and (now - hit.ts) < CACHE_TTL_SEC then
     return hit.ctx
   end
@@ -201,14 +229,26 @@ end
 
 wezterm.on('format-tab-title', function(tab, tabs, panes, config, hover, max_width)
   local pane = tab.active_pane
-  local ctx = M.read_context(cwd_from_pane(pane))
+  local ctx = M.read_context(M.cwd_from_pane(pane), true)
   local title = tab.tab_title
   if title == nil or title == '' then title = pane.title end
   return M.tab_title_items(tab, ctx, title)
 end)
 
+-- Fill the cache for every tab of the window, so format-tab-title (which may
+-- only read the cache) has a context for inactive tabs too.
+local function refresh_tabs(window)
+  local ok, tabs = pcall(function() return window:mux_window():tabs() end)
+  if not ok or not tabs then return end
+  for _, t in ipairs(tabs) do
+    local pok, p = pcall(function() return t:active_pane() end)
+    if pok and p then M.read_context(M.cwd_from_pane(p)) end
+  end
+end
+
 wezterm.on('update-right-status', function(window, pane)
-  local cwd = cwd_from_pane(pane)
+  refresh_tabs(window)
+  local cwd = M.cwd_from_pane(pane)
   local ctx = M.read_context(cwd)
 
   if not ctx then

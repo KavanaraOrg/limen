@@ -90,6 +90,19 @@ limen.tab_suffix = function() error('boom') end
 check('failing suffix is ignored', texts(limen.tab_title_items(fake_tab, nil, 'zsh')), ' 1: zsh ')
 limen.tab_suffix = nil
 
+-- ── cwd from a pane: Pane object (status events) or PaneInformation ───
+-- format-tab-title hands over tab.active_pane as a PaneInformation table: it
+-- has a current_working_dir FIELD, and indexing an unknown method on it raises.
+check('cwd from PaneInformation (Url)',
+  limen.cwd_from_pane({ current_working_dir = { file_path = '/tmp/p-info' } }), '/tmp/p-info')
+check('cwd from PaneInformation (string)',
+  limen.cwd_from_pane({ current_working_dir = 'file://host/tmp/p-str' }), '/tmp/p-str')
+check('cwd from PaneInformation without cwd', limen.cwd_from_pane({}), nil)
+check('cwd from Pane object', limen.cwd_from_pane({
+  get_current_working_dir = function() return { file_path = '/tmp/p-obj' } end,
+}), '/tmp/p-obj')
+check('cwd from nil pane', limen.cwd_from_pane(nil), nil)
+
 -- ── the right status: order, omission, markers ────────────────────────
 check('full status', join(limen.status_parts({
   actor = 'Matthias Wegner',
@@ -151,6 +164,18 @@ with_stdout('{"root":"/tmp/p","label":"probe","actor":"Leo"}', function()
   check('real json becomes a context', ctx and ctx.label, 'probe')
 end)
 check('nil cwd is no context', limen.read_context(nil), nil)
+
+-- format-tab-title must not spawn processes (WezTerm raises "attempt to yield
+-- from outside a coroutine"), so it reads the cache only - stale entries too,
+-- because the status events refresh them.
+local spawned_child = false
+wezterm.run_child_process = function() spawned_child = true; return true, '{}' end
+check('cache-only miss is nil', limen.read_context('/tmp/limen-selftest-never', true), nil)
+check('cache-only spawns nothing', spawned_child, false)
+local cached = limen.read_context('/tmp/limen-selftest-d', true)
+check('cache-only hit, even when stale', cached and cached.label, 'probe')
+check('cache-only hit spawns nothing', spawned_child, false)
+wezterm.run_child_process = original_run
 
 -- ── the binary is configurable, because WezTerm's PATH is not your PATH ──
 check('bin defaults to limen', limen.bin, 'limen')
