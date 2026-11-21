@@ -842,6 +842,53 @@ copy of that session (the conversation went on there) unless `--force`. limen
 prints the resume command; it never runs it. The prompt cache does not cross
 accounts, so the first turn after a swap reads the whole context again.
 
+## Token accounts — `limen account env | exec`
+
+`claude setup-token` issues a one-year OAuth token. Claude Code reads it from
+`CLAUDE_CODE_OAUTH_TOKEN`, and it beats the login stored in `CLAUDE_CONFIG_DIR`.
+The machine-local registry `~/.config/limen/claude-accounts.yaml`
+(`$XDG_CONFIG_HOME` honoured; 0600; created on first use; never commit it) says
+where each account's token is. It never holds the token itself:
+
+```yaml
+accounts:
+  - name: matthias-privat
+    label: Claude-Matthias-Privat
+    token: bws:d53b0712-a922-48cf-9a9f-b509011a9f99   # Bitwarden Secrets Manager
+    configDir: ~/.claude-privat                       # optional, default ~/.claude-<name>
+  - name: ci
+    token: env:CI_CLAUDE_TOKEN                        # already in the environment
+```
+
+```sh
+limen account list                    # registry accounts: name, label, token source (bws|env); never the token
+limen account use matthias-privat     # a registry name works wherever an account name does
+eval "$(limen account env --shell)"   # CLAUDE_CONFIG_DIR + CLAUDE_CODE_OAUTH_TOKEN of the account in effect
+limen account env matthias-privat     # KEY=value lines for a named account
+limen account exec -- claude          # run a command in that environment; the caller never sees the token
+limen account exec ci --require-token -- claude -p "…"   # fail instead of running without a token
+```
+
+The token is resolved at call time: a `CLAUDE_CODE_OAUTH_TOKEN` set by hand,
+then `LIMEN_CLAUDE_TOKEN_<NAME>`, then the entry's source; without a registry
+entry there is none and the config directory's login applies. bws reads
+`BWS_ACCESS_TOKEN` from the environment, else from the login keychain (service
+`BWS_ACCESS_TOKEN`, account `$USER`), because launchd services and GUI-started
+processes read no shell startup file:
+
+```sh
+security add-generic-password -a "$USER" -s BWS_ACCESS_TOKEN -w
+```
+
+The token goes to the stdout of `account env` and into the environment of the
+`account exec` command, nowhere else: `json` reports only `claude_account` and
+`token_source` (`bws`, `env` or `none`, without calling bws), and errors carry
+no value. A token limen exported is marked with `LIMEN_ACCOUNT_TOKEN_FOR`; after
+a switch the shell hook unsets it and exports the new account's token, so a
+config directory never runs under another account's token. `account exec`
+without a token still runs the command (a warning on stderr), so a terminal
+opens even when Bitwarden is unreachable.
+
 ## Switching the GitHub account along
 
 Limen does not call `gh auth switch` itself — a tool that runs on every `cd`

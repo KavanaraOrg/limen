@@ -252,6 +252,11 @@ func resolveAccount(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if accountNamePattern.MatchString(name) && name != "default" {
+		if dir, ok, err := registryAccountDir(name); ok || err != nil {
+			return dir, err
+		}
+	}
 	var dir string
 	switch {
 	case name == "default":
@@ -286,9 +291,11 @@ func accountName(dir string) string {
 }
 
 type accountEntry struct {
-	Name   string `json:"name"`
-	Dir    string `json:"dir"`
-	Active bool   `json:"active"`
+	Name        string `json:"name"`
+	Dir         string `json:"dir"`
+	Active      bool   `json:"active"`
+	Label       string `json:"label,omitempty"`
+	TokenSource string `json:"token_source,omitempty"`
 }
 
 // listAccounts finds ~/.claude and every ~/.claude-* directory. Files with
@@ -303,13 +310,26 @@ func listAccounts(active string) ([]accountEntry, error) {
 		return nil, err
 	}
 	list := []accountEntry{}
+	reg, err := loadClaudeAccounts()
+	if err != nil {
+		return nil, err
+	}
+	inReg := map[string]bool{}
+	for _, a := range reg {
+		dir, err := a.dir()
+		if err != nil {
+			continue
+		}
+		inReg[dir] = true
+		list = append(list, accountEntry{Name: a.Name, Dir: dir, Active: dir == active, Label: a.Label, TokenSource: a.sourceKind()})
+	}
 	for _, e := range entries {
 		n := e.Name()
 		if n != ".claude" && !strings.HasPrefix(n, ".claude-") {
 			continue
 		}
 		dir := filepath.Join(home, n)
-		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() || inReg[dir] {
 			continue
 		}
 		list = append(list, accountEntry{Name: accountName(dir), Dir: dir, Active: dir == active})
@@ -343,11 +363,18 @@ func CmdAccount(w io.Writer, c *Context, cwd string, args []string) error {
 	case "", "show", "status":
 		return accountStatus(w, c)
 	case "list":
+		if err := ensureClaudeAccounts(); err != nil {
+			return err
+		}
 		jsonOut := len(args) > 1 && args[1] == "--json"
 		return accountList(w, c, jsonOut)
+	case "env":
+		return accountEnv(w, c, args[1:])
+	case "exec":
+		return accountExec(c, args[1:])
 	case "use":
 		if len(args) != 2 {
-			return errors.New("usage: limen account use <name|default|path>")
+			return errors.New("usage: limen account use <registry name|name|default|path>")
 		}
 		dir, err := resolveAccount(args[1])
 		if err != nil {
@@ -368,7 +395,7 @@ func CmdAccount(w io.Writer, c *Context, cwd string, args []string) error {
 	case "swap":
 		return accountSwap(w, c, cwd, args[1:])
 	default:
-		return fmt.Errorf("unknown account command %q (show, list, use, clear, swap)", printable(sub))
+		return fmt.Errorf("unknown account command %q (show, list, use, clear, swap, env, exec)", printable(sub))
 	}
 }
 
@@ -426,7 +453,11 @@ func accountList(w io.Writer, c *Context, jsonOut bool) error {
 		if a.Active {
 			mark = "*"
 		}
-		fmt.Fprintf(w, "%s %-20s %s\n", mark, printable(a.Name), printable(a.Dir))
+		src := a.TokenSource
+		if src == "" {
+			src = "login"
+		}
+		fmt.Fprintf(w, "%s %-24s %-30s %-5s %s\n", mark, printable(a.Name), printable(a.Label), src, printable(a.Dir))
 	}
 	return nil
 }

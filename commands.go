@@ -224,7 +224,13 @@ limen() {
   local rc=$?
   if [ "$rc" -eq 0 ]; then
     case "$1 $2" in
-      "account use"|"account clear"|"account swap") _limen_apply ;;
+      "account use"|"account clear"|"account swap")
+        _limen_apply
+        # The new account's token, if the registry has one. Fails quietly:
+        # the switch itself has happened either way.
+        local env
+        env="$(command limen account env --shell 2>/dev/null)" && [ -n "$env" ] && eval "$env"
+        ;;
     esac
   fi
   return $rc
@@ -250,7 +256,13 @@ limen() {
   local rc=$?
   if [ "$rc" -eq 0 ]; then
     case "$1 $2" in
-      "account use"|"account clear"|"account swap") _limen_apply ;;
+      "account use"|"account clear"|"account swap")
+        _limen_apply
+        # The new account's token, if the registry has one. Fails quietly:
+        # the switch itself has happened either way.
+        local env
+        env="$(command limen account env --shell 2>/dev/null)" && [ -n "$env" ] && eval "$env"
+        ;;
     esac
   fi
   return $rc

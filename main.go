@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const version = "0.17.1"
+const version = "0.18.0"
 
 const usage = `limen ` + version + ` — context and identity per directory
 
@@ -28,10 +28,26 @@ const usage = `limen ` + version + ` — context and identity per directory
                         machine-wide switch: <name> is ~/.claude-<name>, and it
                         beats every project's claudeConfigDir until
   limen account clear   lifts it again
+  limen account env [<name>] [--shell]
+                        CLAUDE_CONFIG_DIR and CLAUDE_CODE_OAUTH_TOKEN for a new
+                        Claude Code session of the account in effect (or <name>);
+                        the token is resolved now from the registry's source
+                        (bws or env) and printed only here, for eval
+  limen account exec [<name>] [--require-token] -- <command> [args…]
+                        run the command in that environment, so a launcher never
+                        handles the token; without a token it runs anyway
+                        (warning on stderr) unless --require-token
   limen account swap <name> [--from <account>] [--session <id>] [--dry-run] [--force]
                         carry this directory's latest (or the named) session
                         transcript into another account, switch to it, and print
                         the claude --resume that continues it there
+
+  The account registry ~/.config/limen/claude-accounts.yaml (0600, machine-local,
+  created on first use) names accounts with a token source — bws:<secret-uuid>
+  or env:<VAR> — and an optional configDir (default ~/.claude-<name>). Order: a
+  CLAUDE_CODE_OAUTH_TOKEN set by hand, LIMEN_CLAUDE_TOKEN_<NAME>, the source.
+  bws reads BWS_ACCESS_TOKEN from the environment, else from the login keychain
+  (service BWS_ACCESS_TOKEN, account $USER).
   limen note [--at label] "text"
                         append a dated note to .limen/notes.md
   limen backlog [--json] open notes across all contexts — where something is to
@@ -152,6 +168,7 @@ func run(args []string, stdout, stderr *os.File) int {
 		// The account switch is machine-wide, so it holds outside a project
 		// too, and a cleared one is unset again (account.go).
 		shellAccountLines(out, ctxOrNil(ctx, found), override)
+		shellTokenLines(out, ctxOrNil(ctx, found), override)
 		if found {
 			// Crossing the threshold is what makes a root known: the hook runs
 			// here on every cd, so every context ever entered appears in

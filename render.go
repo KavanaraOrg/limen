@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -46,6 +47,8 @@ type jsonView struct {
 	ClaudeConfigDir string    `json:"claude_config_dir"`
 	ProjectClaude   string    `json:"project_claude_config_dir"`
 	AccountOverride string    `json:"account_override"`
+	ClaudeAccount   string    `json:"claude_account"`
+	TokenSource     string    `json:"token_source"`
 	GcloudAccount   string    `json:"gcloud_account"`
 	GcloudProject   string    `json:"gcloud_project"`
 	Provider        string    `json:"provider"`
@@ -73,7 +76,17 @@ func RenderJSON(w io.Writer, c *Context, r KeyResolver) error {
 	}
 	_, _, present := r.Resolve(c)
 	active, paused := SkillState(c)
+	// Where the Claude token would come from — never the token, and never a
+	// bws call: this runs on every repaint of a terminal.
+	reg, _ := loadClaudeAccounts()
+	acct := claudeAccountForDir(reg, c.ClaudeDir)
+	acctName := ""
+	if acct != nil {
+		acctName = acct.Name
+	}
 	v := jsonView{
+		ClaudeAccount:   acctName,
+		TokenSource:     tokenSourceKind(acct, os.Getenv),
 		Root:            c.Root,
 		Label:           c.Label,
 		Actor:           c.Actor,
