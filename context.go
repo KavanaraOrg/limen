@@ -31,6 +31,12 @@ type Context struct {
 	Model         string
 	Gateway       string
 
+	// AccountOverride is the machine-wide account switch (account.go) when it
+	// is set; ClaudeDir then holds it, and ProjectClaudeDir keeps what the
+	// descriptor named, so the override can be reported rather than hidden.
+	AccountOverride  string
+	ProjectClaudeDir string
+
 	// Purpose and Topics are for agents, not for the shell: one line about what
 	// this tree is for, and a comma-separated topic list. They are what lets a
 	// reader of `limen list` match a loose note to the right directory — the

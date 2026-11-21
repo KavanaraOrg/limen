@@ -21,6 +21,9 @@ func Prompt(c *Context) string {
 	if c.Model != "" {
 		parts = append(parts, c.Model)
 	}
+	if c.AccountOverride != "" {
+		parts = append(parts, "acct:"+accountName(c.AccountOverride))
+	}
 	if c.HasPlaintextKey() {
 		parts = append(parts, "!key-in-config")
 	}
@@ -41,6 +44,8 @@ type jsonView struct {
 	Actor           string    `json:"actor"`
 	GithubUser      string    `json:"github_user"`
 	ClaudeConfigDir string    `json:"claude_config_dir"`
+	ProjectClaude   string    `json:"project_claude_config_dir"`
+	AccountOverride string    `json:"account_override"`
 	GcloudAccount   string    `json:"gcloud_account"`
 	GcloudProject   string    `json:"gcloud_project"`
 	Provider        string    `json:"provider"`
@@ -74,6 +79,8 @@ func RenderJSON(w io.Writer, c *Context, r KeyResolver) error {
 		Actor:           c.Actor,
 		GithubUser:      c.GithubUser,
 		ClaudeConfigDir: c.ClaudeDir,
+		ProjectClaude:   c.ProjectClaudeDir,
+		AccountOverride: c.AccountOverride,
 		GcloudAccount:   c.GcloudAccount,
 		GcloudProject:   c.GcloudProject,
 		Provider:        c.Provider,
@@ -110,7 +117,15 @@ func RenderShow(w io.Writer, c *Context, r KeyResolver) {
 	}
 	line("actor", c.Actor)
 	line("github user", c.GithubUser)
-	line("claude dir", c.ClaudeDir)
+	if c.AccountOverride != "" {
+		note := "override"
+		if c.ProjectClaudeDir != "" && c.ProjectClaudeDir != c.AccountOverride {
+			note += ", project: " + c.ProjectClaudeDir
+		}
+		line("claude dir", fmt.Sprintf("%s  (%s)", c.ClaudeDir, note))
+	} else {
+		line("claude dir", c.ClaudeDir)
+	}
 	line("gcloud acct", c.GcloudAccount)
 	line("gcloud proj", c.GcloudProject)
 	line("provider", c.Provider)

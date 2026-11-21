@@ -213,12 +213,19 @@ const zshHook = `# limen — add to .zshrc:  eval "$(limen hook zsh)"
 # One call per directory change; LIMEN_SEGMENT rides along in the same output.
 _limen_apply() {
   local out
-  out="$(limen shell 2>/dev/null)" || return 0
-  if [[ -n "$out" ]]; then
-    eval "$out"
-  else
-    unset LIMEN_ROOT LIMEN_LABEL LIMEN_ACTOR LIMEN_GH_USER LIMEN_SEGMENT
-  fi
+  out="$(command limen shell 2>/dev/null)" || return 0
+  unset LIMEN_ROOT LIMEN_LABEL LIMEN_ACTOR LIMEN_GH_USER LIMEN_SEGMENT
+  [[ -n "$out" ]] && eval "$out"
+  return 0
+}
+# An account switch must reach this shell at once, not on the next cd.
+limen() {
+  command limen "$@"
+  local rc=$?
+  case "$1 $2" in
+    "account use"|"account clear"|"account swap") unset CLAUDE_CONFIG_DIR; _limen_apply ;;
+  esac
+  return $rc
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook chpwd _limen_apply
@@ -230,12 +237,19 @@ _limen_apply
 const bashHook = `# limen — add to .bashrc:  eval "$(limen hook bash)"
 _limen_apply() {
   local out
-  out="$(limen shell 2>/dev/null)" || return 0
-  if [[ -n "$out" ]]; then
-    eval "$out"
-  else
-    unset LIMEN_ROOT LIMEN_LABEL LIMEN_ACTOR LIMEN_GH_USER LIMEN_SEGMENT
-  fi
+  out="$(command limen shell 2>/dev/null)" || return 0
+  unset LIMEN_ROOT LIMEN_LABEL LIMEN_ACTOR LIMEN_GH_USER LIMEN_SEGMENT
+  [[ -n "$out" ]] && eval "$out"
+  return 0
+}
+# An account switch must reach this shell at once, not on the next cd.
+limen() {
+  command limen "$@"
+  local rc=$?
+  case "$1 $2" in
+    "account use"|"account clear"|"account swap") unset CLAUDE_CONFIG_DIR; _limen_apply ;;
+  esac
+  return $rc
 }
 PROMPT_COMMAND="_limen_apply${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 _limen_apply
