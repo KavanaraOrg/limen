@@ -104,7 +104,7 @@ lines. `githubUser`, `github-user` and `github_user` are the same field.
 | `LIMEN_ACTOR`, `LIMEN_GH_USER` | `actor`, `githubUser` |
 | `LIMEN_PROVIDER`, `LIMEN_MODEL` | `provider`, `model` |
 | `LIMEN_SEGMENT` | ready-made status-line segment |
-| `CLAUDE_CONFIG_DIR` | `claudeConfigDir`, tilde expanded |
+| `CLAUDE_CONFIG_DIR` | `claudeConfigDir`, tilde expanded — or the account override (`limen account use`) |
 | `CLOUDSDK_CORE_ACCOUNT`, `CLOUDSDK_CORE_PROJECT` | `gcloudAccount`, `gcloudProject` |
 | `ANTHROPIC_BASE_URL` | `gateway` |
 | `LIMEN_DEV_PORT`, `PORT` | the primary development endpoint |
@@ -793,6 +793,48 @@ make test-wezterm
 The negative control is deliberate: it builds a knowingly broken module and
 demands that WezTerm report it. Without it, the checks above could pass by never
 executing anything.
+
+## Switching the Claude account — `limen account`
+
+A Claude Code account is a `CLAUDE_CONFIG_DIR` holding a login. Every project
+names one in `claudeConfigDir`; when that account's tokens are spent, the lever
+is one machine-wide switch rather than editing every descriptor:
+
+```sh
+limen account                    # the account in effect, and whether project or override
+limen account list [--json]      # every ~/.claude and ~/.claude-* directory, * marks the active one
+limen account use turbogruen-2   # ~/.claude-turbogruen-2 beats every project's claudeConfigDir
+limen account use default        # ~/.claude; a path (~/x, /x) works as well
+limen account clear              # each project's own value applies again
+```
+
+The override lives in `$XDG_STATE_HOME/limen/account` (default
+`~/.local/state/limen/account`). `limen shell` exports it as
+`CLAUDE_CONFIG_DIR` inside every context and — the one exception to "silent
+without a context" — outside one too. Terminals, officina strands and clavo
+sessions started from such a shell inherit it. The hook wraps `limen` so that
+`account use|clear|swap` takes effect in the current shell at once. A process
+that captured its environment earlier (a running clavo daemon, say) keeps the
+old value until it is restarted. `show`, `json` (`account_override`,
+`project_claude_config_dir`) and the prompt segment (`acct:<name>`) name an
+active override.
+
+A running Claude Code session cannot change its config directory. `swap`
+carries the conversation over instead:
+
+```sh
+limen account swap turbogruen-3 [--session <id>] [--dry-run] [--force]
+```
+
+It takes the session's account from `CLAUDE_CONFIG_DIR` (else the context's),
+finds this directory's folder under `projects/` (Claude Code's name for it:
+every non-alphanumeric character becomes `-`), copies the newest transcript —
+or the named one — with its `<id>/` folder of subagent transcripts into the
+target account, sets the override, and prints the `claude --resume <id>` to
+run from the same directory. It refuses when the target already holds a newer
+copy of that session (the conversation went on there) unless `--force`. limen
+prints the resume command; it never runs it. The prompt cache does not cross
+accounts, so the first turn after a swap reads the whole context again.
 
 ## Switching the GitHub account along
 
