@@ -37,6 +37,12 @@ type Context struct {
 	AccountOverride  string
 	ProjectClaudeDir string
 
+	// ClaudeDirInvalid holds a claudeConfigDir that was refused: relative, or
+	// inside the project. A descriptor committed to a cloned repository must
+	// not choose the account (red-team 2026-11-21, F-2), so it is reported in
+	// show and never exported.
+	ClaudeDirInvalid string
+
 	// Purpose and Topics are for agents, not for the shell: one line about what
 	// this tree is for, and a comma-separated topic list. They are what lets a
 	// reader of `limen list` match a loose note to the right directory — the
@@ -225,6 +231,9 @@ func (c *Context) finish() {
 		c.Label = filepath.Base(c.Root)
 	}
 	c.ClaudeDir = expandTilde(c.ClaudeDir)
+	if c.ClaudeDir != "" && !claudeDirAcceptable(c.ClaudeDir, c.Root) {
+		c.ClaudeDirInvalid, c.ClaudeDir = c.ClaudeDir, ""
+	}
 	c.Service = readService(c.Root)
 	c.Meta = readMeta(c.Root)
 }
@@ -269,4 +278,13 @@ func (c *Context) TopicList() []string {
 		}
 	}
 	return list
+}
+
+// claudeDirAcceptable is an absolute, printable path outside the project tree.
+func claudeDirAcceptable(dir, root string) bool {
+	if !filepath.IsAbs(dir) || hasControl(dir) {
+		return false
+	}
+	rel, err := filepath.Rel(root, filepath.Clean(dir))
+	return err == nil && (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }

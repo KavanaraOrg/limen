@@ -222,9 +222,11 @@ _limen_apply() {
 limen() {
   command limen "$@"
   local rc=$?
-  case "$1 $2" in
-    "account use"|"account clear"|"account swap") unset CLAUDE_CONFIG_DIR; _limen_apply ;;
-  esac
+  if [ "$rc" -eq 0 ]; then
+    case "$1 $2" in
+      "account use"|"account clear"|"account swap") _limen_apply ;;
+    esac
+  fi
   return $rc
 }
 autoload -Uz add-zsh-hook
@@ -246,9 +248,11 @@ _limen_apply() {
 limen() {
   command limen "$@"
   local rc=$?
-  case "$1 $2" in
-    "account use"|"account clear"|"account swap") unset CLAUDE_CONFIG_DIR; _limen_apply ;;
-  esac
+  if [ "$rc" -eq 0 ]; then
+    case "$1 $2" in
+      "account use"|"account clear"|"account swap") _limen_apply ;;
+    esac
+  fi
   return $rc
 }
 PROMPT_COMMAND="_limen_apply${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
