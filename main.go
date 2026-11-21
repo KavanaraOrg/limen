@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const version = "0.16.0"
+const version = "0.17.0"
 
 const usage = `limen ` + version + ` — context and identity per directory
 
@@ -21,6 +21,17 @@ const usage = `limen ` + version + ` — context and identity per directory
   limen list [--json]   every context registered on this machine
   limen register [path…] take a context into the registry (the shell hook does
                         this by itself on entry)
+  limen account [list [--json]]
+                        the Claude account in effect and where it comes from;
+                        list shows every ~/.claude and ~/.claude-* directory
+  limen account use <name|default|path>
+                        machine-wide switch: <name> is ~/.claude-<name>, and it
+                        beats every project's claudeConfigDir until
+  limen account clear   lifts it again
+  limen account swap <name> [--session <id>] [--dry-run] [--force]
+                        carry this directory's latest (or the named) session
+                        transcript into another account, switch to it, and print
+                        the claude --resume that continues it there
   limen note [--at label] "text"
                         append a dated note to .limen/notes.md
   limen backlog [--json] open notes across all contexts — where something is to
@@ -54,8 +65,8 @@ const usage = `limen ` + version + ` — context and identity per directory
   limen hook zsh|bash   shell hook to wire in
 
 The search runs upward for .limen/limen.yaml, then for a flat .limen.yaml (old
-layout). Without a context: json prints {}, shell stays silent, both with
-exit 0 — so the call can be made unconditionally from a shell startup file.
+layout). Without a context: json prints {}, shell stays silent (apart from
+the account switch, when one is set), both with exit 0 — so the call can be made unconditionally from a shell startup file.
 
 Everything limen owns lives in .limen/: limen.yaml is the descriptor (hard
 truth, never written by tools, machine-local), notes.md collects loose thoughts,
@@ -115,6 +126,10 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 
 	ctx, found := Discover(cwd)
+	override := loadAccountOverride()
+	if found {
+		applyAccountOverride(ctx, override)
+	}
 	resolver := NewSystemKeyResolver()
 
 	switch cmd {
@@ -134,6 +149,11 @@ func run(args []string, stdout, stderr *os.File) int {
 	case "shell":
 		// Silence and exit 0 without a context: this runs from .zshrc.
 		RenderShell(out, ctxOrNil(ctx, found), resolver)
+		if !found && override != "" {
+			// The account switch is machine-wide, so it holds outside a
+			// project too; it is the only line written there.
+			fmt.Fprintf(out, "export CLAUDE_CONFIG_DIR=%s\n", shellQuote(override))
+		}
 		if found {
 			// Crossing the threshold is what makes a root known: the hook runs
 			// here on every cd, so every context ever entered appears in
@@ -201,6 +221,13 @@ func run(args []string, stdout, stderr *os.File) int {
 			return 1
 		}
 		return code
+
+	case "account":
+		if err := CmdAccount(out, ctxOrNil(ctx, found), cwd, args[1:]); err != nil {
+			out.Flush()
+			fmt.Fprintf(stderr, "limen: %v\n", err)
+			return 1
+		}
 
 	case "note":
 		if err := CmdNote(out, ctxOrNil(ctx, found), found, args[1:], time.Now()); err != nil {
