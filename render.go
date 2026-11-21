@@ -126,6 +126,9 @@ func RenderShow(w io.Writer, c *Context, r KeyResolver) {
 	} else {
 		line("claude dir", c.ClaudeDir)
 	}
+	if c.ClaudeDirInvalid != "" {
+		line("claude dir", "!! "+printable(c.ClaudeDirInvalid)+" ignored — claudeConfigDir must be absolute and outside the project")
+	}
 	line("gcloud acct", c.GcloudAccount)
 	line("gcloud proj", c.GcloudProject)
 	line("provider", c.Provider)

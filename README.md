@@ -813,7 +813,11 @@ The override lives in `$XDG_STATE_HOME/limen/account` (default
 `CLAUDE_CONFIG_DIR` inside every context and — the one exception to "silent
 without a context" — outside one too. Terminals, officina strands and clavo
 sessions started from such a shell inherit it. The hook wraps `limen` so that
-`account use|clear|swap` takes effect in the current shell at once. A process
+`account use|clear|swap` takes effect in the current shell at once when it
+succeeds; an active override travels with the marker `LIMEN_ACCOUNT_OVERRIDE`,
+so a cleared one is unset on the next apply instead of lingering. A
+`claudeConfigDir` that is relative or inside the project is ignored (`show`
+marks it `!!`): a descriptor in a cloned repository must not choose the account. A process
 that captured its environment earlier (a running clavo daemon, say) keeps the
 old value until it is restarted. `show`, `json` (`account_override`,
 `project_claude_config_dir`) and the prompt segment (`acct:<name>`) name an
@@ -823,7 +827,7 @@ A running Claude Code session cannot change its config directory. `swap`
 carries the conversation over instead:
 
 ```sh
-limen account swap turbogruen-3 [--session <id>] [--dry-run] [--force]
+limen account swap turbogruen-3 [--from <account>] [--session <id>] [--dry-run] [--force]
 ```
 
 It takes the session's account from `CLAUDE_CONFIG_DIR` (else the context's),
@@ -831,7 +835,9 @@ finds this directory's folder under `projects/` (Claude Code's name for it:
 every non-alphanumeric character becomes `-`), copies the newest transcript —
 or the named one — with its `<id>/` folder of subagent transcripts into the
 target account, sets the override, and prints the `claude --resume <id>` to
-run from the same directory. It refuses when the target already holds a newer
+run from the same directory. Without `--from`, the source must be `~/.claude` or
+`~/.claude-*`; only transcripts named like session ids and only regular files
+are copied, and no symlink is written through. It refuses when the target already holds a newer
 copy of that session (the conversation went on there) unless `--force`. limen
 prints the resume command; it never runs it. The prompt cache does not cross
 accounts, so the first turn after a swap reads the whole context again.
