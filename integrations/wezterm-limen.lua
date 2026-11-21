@@ -6,6 +6,12 @@
 --   - a marker when a plaintext key still sits in the config
 --   - a marker when the project routes through a local gateway
 --
+-- and starts every new pane through `limen account exec`, so the shell (and
+-- every Claude Code session started from it) carries CLAUDE_CONFIG_DIR and
+-- CLAUDE_CODE_OAUTH_TOKEN of the account in effect for the pane's directory.
+-- The token is resolved by limen at spawn time; it never passes through this
+-- config, WezTerm's state or a file. limen.account_env = false switches it off.
+--
 -- `limen json` costs about 5 ms, so the cache here exists only to avoid
 -- redundant work when WezTerm repaints several times in a row — one second,
 -- not longer.
@@ -30,6 +36,9 @@ local M = {}
 
 -- Settable from wezterm.lua; falls back to the environment, then to PATH.
 M.bin = os.getenv('LIMEN_BIN') or 'limen'
+
+-- Wrap new panes in `limen account exec` (see apply()).
+M.account_env = true
 
 -- Cache: cwd -> { ts = unix_time, ctx = table_or_nil }
 local cache = {}
@@ -194,9 +203,25 @@ wezterm.on('update-right-status', function(window, pane)
   }))
 end)
 
+--- argv that runs `args` in the account environment of its directory:
+--- limen resolves the token and execs the command, so the caller never
+--- handles it. Use it for your own SpawnCommand args too.
+function M.with_account(args)
+  local argv = { M.bin, 'account', 'exec', '--' }
+  for _, a in ipairs(args) do table.insert(argv, a) end
+  return argv
+end
+
 function M.apply(config)
   config.use_fancy_tab_bar = false
   config.tab_max_width = 48
+  if M.account_env then
+    local prog = config.default_prog or { os.getenv('SHELL') or '/bin/zsh', '-l' }
+    -- Already wrapped (apply called twice): leave it.
+    if prog[2] ~= 'account' then
+      config.default_prog = M.with_account(prog)
+    end
+  end
 end
 
 return M
