@@ -9,6 +9,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -265,6 +266,8 @@ func TestVersionConstraintMatchesOnDotBoundaries(t *testing.T) {
 		{"1", "10.0.0", false}, // not a prefix match on digits alone
 		{"1.0.0", "1.0.1", false},
 		{"2", "1.0.0", false},
+		{"latest", "7.0.0", true}, // follows whatever is installed, by choice
+		{"latest", "", true},
 	}
 	for _, c := range cases {
 		if got := versionMatches(c.constraint, c.actual); got != c.want {
@@ -939,5 +942,166 @@ func TestCheckWarnsAboutAPausedSkillItDidNotWrite(t *testing.T) {
 	}
 	if _, err := os.Stat(stray); err != nil {
 		t.Error("limen deleted a file it never wrote")
+	}
+}
+
+// ------------------------------------------------------------------- latest
+
+// latestProject declares the baseline as @latest, installs src and syncs.
+func latestProject(t *testing.T, src string) (root string) {
+	t.Helper()
+	root, _ = project(t, "label: tessera\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline@latest\n")
+	var out strings.Builder
+	if _, err := CmdProfile(&out, nil, []string{"install", src}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, _ := Discover(root)
+	if _, err := CmdProfile(&out, ctx, []string{"sync"}); err != nil {
+		t.Fatalf("sync with @latest: %v\n%s", err, out.String())
+	}
+	return root
+}
+
+func TestSyncWithLatestTakesWhateverIsInstalled(t *testing.T) {
+	store(t)
+	root := latestProject(t, baseline(t))
+	ctx, _ := Discover(root)
+	lock, err := readLock(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lock.Profiles["kavanara-baseline"].Version; got != "1.0.0" {
+		t.Errorf("lock records %q, want the installed 1.0.0", got)
+	}
+}
+
+func TestCheckFailsWhenLatestIsBehindTheInstalledPackage(t *testing.T) {
+	store(t)
+	root := latestProject(t, baseline(t))
+
+	newer := pkg(t, "kavanara-baseline", "2.0.0",
+		map[string]string{"tdd/SKILL.md": "---\nname: tdd\n---\nTest first, always.\n"},
+		map[string]string{"ADR-0001-english.md": "# ADR-0001\n"})
+	var out strings.Builder
+	if _, err := CmdProfile(&out, nil, []string{"install", newer}); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, _ := Discover(root)
+	out.Reset()
+	code, err := CmdProfile(&out, ctx, []string{"check"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != 1 || !strings.Contains(out.String(), "2.0.0") {
+		t.Fatalf("check = exit %d, want 1 naming the installed 2.0.0:\n%s", code, out.String())
+	}
+
+	out.Reset()
+	if _, err := CmdProfile(&out, ctx, []string{"sync"}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code, _ := CmdProfile(&out, ctx, []string{"check"}); code != 0 {
+		t.Errorf("check after sync = exit %d:\n%s", code, out.String())
+	}
+}
+
+// On a CI runner nothing is installed. A @latest project is then checked
+// against its own lock, as a pinned one is — not failed for want of a store.
+func TestCheckWithLatestAndNoStorePassesOnTheLock(t *testing.T) {
+	store(t)
+	root := latestProject(t, baseline(t))
+	store(t) // a fresh, empty store
+
+	ctx, _ := Discover(root)
+	var out strings.Builder
+	if code, _ := CmdProfile(&out, ctx, []string{"check"}); code != 0 {
+		t.Errorf("check without a store = exit %d:\n%s", code, out.String())
+	}
+}
+
+func TestStatusNamesALatestProjectThatIsBehind(t *testing.T) {
+	store(t)
+	root := latestProject(t, baseline(t))
+	var out strings.Builder
+	if _, err := CmdProfile(&out, nil, []string{"install",
+		pkg(t, "kavanara-baseline", "2.0.0", map[string]string{"tdd/SKILL.md": "x\n"}, nil)}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, _ := Discover(root)
+	out.Reset()
+	if _, err := CmdProfile(&out, ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "2.0.0") || !strings.Contains(out.String(), "limen profile sync") {
+		t.Errorf("status does not point at the newer package:\n%s", out.String())
+	}
+}
+
+// gitPackage makes a git repository holding a package whose manifest names
+// that repository, so `update` can fetch it again.
+func gitPackage(t *testing.T, version string) (repo string) {
+	t.Helper()
+	repo = tempDir(t)
+	commitPackage(t, repo, version)
+	return repo
+}
+
+func commitPackage(t *testing.T, repo, version string) {
+	t.Helper()
+	write(t, filepath.Join(repo, "plugin.json"), `{"name": "kavanara-baseline", "version": "`+version+`", "repository": "file://`+repo+`"}`+"\n")
+	write(t, filepath.Join(repo, "skills", "tdd", "SKILL.md"), "Test first ("+version+").\n")
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"add", "-A"},
+		{"-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", version},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+func TestUpdateReinstallsEveryPackageFromItsRepository(t *testing.T) {
+	dst := store(t)
+	repo := gitPackage(t, "1.0.0")
+	var out strings.Builder
+	if _, err := CmdProfile(&out, nil, []string{"install", "file://" + repo}); err != nil {
+		t.Fatal(err)
+	}
+	commitPackage(t, repo, "2.0.0")
+
+	out.Reset()
+	if _, err := CmdProfile(&out, nil, []string{"update"}); err != nil {
+		t.Fatalf("update: %v\n%s", err, out.String())
+	}
+	p, err := readPlugin(filepath.Join(dst, "kavanara-baseline"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Version != "2.0.0" {
+		t.Errorf("store holds %s after update, want 2.0.0\n%s", p.Version, out.String())
+	}
+}
+
+func TestUpdateSkipsAPackageWithoutAFetchableRepository(t *testing.T) {
+	store(t)
+	local := tempDir(t)
+	write(t, filepath.Join(local, "plugin.json"), `{"name": "house-style", "version": "1.0.0"}`+"\n")
+	write(t, filepath.Join(local, "skills", "x", "SKILL.md"), "x\n")
+	var out strings.Builder
+	if _, err := CmdProfile(&out, nil, []string{"install", local}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if _, err := CmdProfile(&out, nil, []string{"update"}); err != nil {
+		t.Fatalf("update failed instead of skipping: %v", err)
+	}
+	if !strings.Contains(out.String(), "house-style") || !strings.Contains(out.String(), "skipped") {
+		t.Errorf("update does not report the skip:\n%s", out.String())
 	}
 }

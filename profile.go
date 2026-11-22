@@ -69,13 +69,33 @@ func readPlugin(dir string) (*Plugin, error) {
 // treating a bare digit as a string prefix would silently accept a major
 // version nobody asked for.
 func versionMatches(constraint, actual string) bool {
-	if constraint == "" {
+	if constraint == "" || constraint == Latest {
 		return true
 	}
 	if constraint == actual {
 		return true
 	}
 	return strings.HasPrefix(actual, constraint+".")
+}
+
+// Latest is the version a project declares when it wants every new release of
+// a profile as soon as it is installed: `profiles: kavanara-baseline@latest`.
+// Sync takes whatever the store holds, and check fails while the materialised
+// copy is older than what is installed, so a stale project is noticed.
+const Latest = "latest"
+
+// behindLatest reports the installed version when a @latest declaration's
+// materialised copy no longer matches it. Without the package in the store
+// (a CI runner) there is nothing to compare, and the lock alone is checked.
+func behindLatest(p Profile, materialised string) (installed string, behind bool) {
+	if p.Version != Latest {
+		return "", false
+	}
+	_, plugin, err := installedProfile(p.Name)
+	if err != nil || plugin.Version == materialised {
+		return "", false
+	}
+	return plugin.Version, true
 }
 
 // ------------------------------------------------------------------- store
@@ -384,8 +404,10 @@ func CmdProfile(w io.Writer, c *Context, args []string) (int, error) {
 		return 0, profileSync(w, c, dry)
 	case "check":
 		return profileCheck(w, c)
+	case "update":
+		return 0, profileUpdate(w)
 	default:
-		return 2, fmt.Errorf("unknown subcommand %q (status, list, install, sync, check)", sub)
+		return 2, fmt.Errorf("unknown subcommand %q (status, list, install, update, sync, check)", sub)
 	}
 }
 
@@ -420,6 +442,11 @@ func profileStatus(w io.Writer, c *Context) error {
 			fmt.Fprintf(w, "%-24s declared, not materialised — limen profile sync\n", p.String())
 		default:
 			drift := driftIn(c, entry)
+			if installed, behind := behindLatest(p, entry.Version); behind {
+				fmt.Fprintf(w, "%-24s materialised %s, installed %s — limen profile sync\n",
+					p.String(), orDash(entry.Version), installed)
+				continue
+			}
 			if len(drift) == 0 {
 				fmt.Fprintf(w, "%-24s current (%d files, %s)\n", p.String(), len(entry.Files), entry.Version)
 			} else {
@@ -507,6 +534,42 @@ func profileInstall(w io.Writer, args []string) error {
 		version = "no version"
 	}
 	fmt.Fprintf(w, "installed: %s %s → %s\n", p.Name, version, target)
+	return nil
+}
+
+// profileUpdate fetches every installed package again from the repository its
+// manifest names, so a @latest declaration has something newer to sync to. A
+// package whose repository is missing or not fetchable (installed from a local
+// path) is skipped and named, never removed. One failing fetch does not stop
+// the others; the error reports how many failed.
+func profileUpdate(w io.Writer) error {
+	plugins, err := installedProfiles()
+	if err != nil {
+		return err
+	}
+	if len(plugins) == 0 {
+		fmt.Fprintln(w, "The store is empty — limen profile install <path|git-url>")
+		return nil
+	}
+	failed := 0
+	for _, p := range plugins {
+		if !isRemote(p.Repository) {
+			fmt.Fprintf(w, "skipped: %s %s — no fetchable repository in plugin.json\n", p.Name, orDash(p.Version))
+			continue
+		}
+		before := p.Version
+		if err := profileInstall(w, []string{p.Repository}); err != nil {
+			fmt.Fprintf(w, "failed: %s — %v\n", p.Name, err)
+			failed++
+			continue
+		}
+		if _, now, err := installedProfile(p.Name); err == nil && now.Version != before {
+			fmt.Fprintf(w, "updated: %s %s → %s\n", p.Name, orDash(before), orDash(now.Version))
+		}
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d package(s) could not be fetched", failed)
+	}
 	return nil
 }
 
@@ -677,6 +740,11 @@ func profileCheck(w io.Writer, c *Context) (int, error) {
 		}
 		if !versionMatches(p.Version, entry.Version) {
 			fmt.Fprintf(w, "%s: materialised is %s — limen profile sync\n", p.String(), orDash(entry.Version))
+			bad++
+		}
+		if installed, behind := behindLatest(p, entry.Version); behind {
+			fmt.Fprintf(w, "%s: materialised is %s, installed is %s — limen profile sync\n",
+				p.String(), orDash(entry.Version), installed)
 			bad++
 		}
 		for _, rel := range driftIn(c, entry) {
