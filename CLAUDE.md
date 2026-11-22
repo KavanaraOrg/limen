@@ -15,7 +15,7 @@ agents.
 
 ## Inherited norms
 
-This directory inherits `kavanara-baseline@7.0.0` (see `.limen/meta.yaml`). The
+This directory inherits `kavanara-baseline@latest` (7.0.0 at the time of writing) (see `.limen/meta.yaml`). The
 skills are materialised in `.claude/skills/`, the reasoning as ADRs in
 `docs/adr/`. In short:
 

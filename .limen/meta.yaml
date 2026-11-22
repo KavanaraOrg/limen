@@ -6,7 +6,7 @@
 # derive identity from it — see meta.go.
 
 # Inherited norms. An agent-plugins.org package, pinned to a version.
-profiles: kavanara-baseline@7.0.0
+profiles: kavanara-baseline@latest
 
 # Where `limen profile sync` materialises them. Both have defaults
 # (.claude/skills and docs/adr); only the deviation is written here.
