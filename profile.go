@@ -656,6 +656,11 @@ func profileSync(w io.Writer, c *Context, dry bool) error {
 			continue
 		}
 		for rel := range entry.Files {
+			// A path another declared profile has just written is its file now
+			// (a renamed package writes the same paths under its new name).
+			if ownedBy(next, rel) {
+				continue
+			}
 			if dry {
 				fmt.Fprintf(w, "would remove: %s (profile %s no longer declared)\n", rel, name)
 				continue
@@ -804,4 +809,14 @@ func orDash(v string) string {
 		return "—"
 	}
 	return v
+}
+
+// ownedBy reports whether any profile in the lock lists rel among its files.
+func ownedBy(l *Lock, rel string) bool {
+	for _, e := range l.Profiles {
+		if _, ok := e.Files[rel]; ok {
+			return true
+		}
+	}
+	return false
 }

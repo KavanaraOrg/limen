@@ -1105,3 +1105,41 @@ func TestUpdateSkipsAPackageWithoutAFetchableRepository(t *testing.T) {
 		t.Errorf("update does not report the skip:\n%s", out.String())
 	}
 }
+
+// A package renamed between versions (levara-baseline became kavanara-baseline)
+// writes the same paths under its new name. Dropping the old name must not
+// delete what the new one has just written.
+func TestReplacingARenamedProfileKeepsTheSharedFiles(t *testing.T) {
+	store(t)
+	old := pkg(t, "levara-baseline", "1.1.0",
+		map[string]string{"tdd/SKILL.md": "old\n"},
+		map[string]string{"ADR-0001-english.md": "# old\n"})
+	root, _ := project(t, "label: tessera\n")
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: levara-baseline@1.1.0\n")
+	var out strings.Builder
+	for _, src := range []string{old, baseline(t)} {
+		if _, err := CmdProfile(&out, nil, []string{"install", src}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, _ := Discover(root)
+	if _, err := CmdProfile(&out, ctx, []string{"sync"}); err != nil {
+		t.Fatal(err)
+	}
+
+	write(t, filepath.Join(root, ".limen", "meta.yaml"), "profiles: kavanara-baseline@latest\n")
+	ctx, _ = Discover(root)
+	out.Reset()
+	if _, err := CmdProfile(&out, ctx, []string{"sync"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"docs/adr/ADR-0001-english.md", ".claude/skills/tdd/SKILL.md"} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Errorf("%s was deleted with the dropped profile although the new one owns it", rel)
+		}
+	}
+	out.Reset()
+	if code, _ := CmdProfile(&out, ctx, []string{"check"}); code != 0 {
+		t.Errorf("check after the swap = exit %d:\n%s", code, out.String())
+	}
+}
