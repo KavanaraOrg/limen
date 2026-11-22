@@ -5,7 +5,7 @@
 # the same for everyone who clones the repository. Tools may read it, never
 # derive identity from it — see meta.go.
 
-# Inherited norms. An agent-plugins.org package, pinned to a version.
+# Inherited norms. An agent-plugins.org package, following its newest release.
 profiles: kavanara-baseline@latest
 
 # Where `limen profile sync` materialises them. Both have defaults
