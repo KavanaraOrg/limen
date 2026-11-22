@@ -15,7 +15,7 @@ agents.
 
 ## Inherited norms
 
-This directory inherits `kavanara-baseline@4.0.0` (see `.limen/meta.yaml`). The
+This directory inherits `kavanara-baseline@7.0.0` (see `.limen/meta.yaml`). The
 skills are materialised in `.claude/skills/`, the reasoning as ADRs in
 `docs/adr/`. In short:
 
@@ -41,6 +41,16 @@ skills are materialised in `.claude/skills/`, the reasoning as ADRs in
 - **ADR-0007** — services work headless: every capability reachable through the
   public interface without the frontend. limen is a CLI with no frontend, so
   this one does not bind here either.
+- **ADR-0008** — every build produces a CycloneDX SBOM, and a licence gate fails
+  on any component that does not allow commercial use. limen's own licence is
+  AGPL-3.0 (copyright Kavanara GmbH) instead of the Apache-2.0 default; the
+  decision is recorded in `docs/decisions/0001-agpl-3.0.md`.
+- **ADR-0009** — every credential lives in Bitwarden Secrets Manager, one
+  project per repository named like the repository; agents refer to a secret
+  by its key and never read or print its value.
+- **ADR-0010** — AI agents are not co-authors: no `Co-Authored-By:` trailer for
+  Claude or any other agent, no "Generated with Claude Code" line in commits,
+  pull requests, issues or release notes.
 
 `limen profile check` proves the copies are unchanged — exit 1 on drift. Do not
 edit the files under `.claude/skills/` or `docs/adr/` by hand: `limen profile
