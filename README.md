@@ -34,7 +34,9 @@ limen backlog   # open notes across all contexts — where something is to be do
 limen ports     # development-endpoint allocation, --caddy/--write feed the proxy
 limen status    # endpoint, start routine and is-it-listening per context; --check exits 1
 limen profile   # inherited norms: what applies here, is it current (sync, check, install)
+limen account   # the Claude account in effect; list, use, clear, env, exec, swap
 limen init      # create .limen/limen.yaml
+limen keychain-import  # move a plaintext key from the descriptor into the keychain
 limen migrate   # lift onto the .limen/ layout (flat .limen.yaml), for many projects
 limen hook zsh  # print the shell integration
 ```
@@ -774,6 +776,25 @@ colour. `leviathan` deliberately keeps the
 default: it shares only "lev" with `levara` and is a different project. Add your
 own entries to `M.palette`.
 
+Two more settings, both optional:
+
+```lua
+-- New panes start through `limen account exec`, so the shell and every Claude
+-- Code session started from it carry CLAUDE_CONFIG_DIR and
+-- CLAUDE_CODE_OAUTH_TOKEN of the account in effect for the pane's directory.
+-- limen resolves the token at spawn time; it never passes through wezterm.lua,
+-- WezTerm's state or a file. On by default; false switches it off.
+limen.account_env = true
+
+-- A segment right after the label, for things only wezterm.lua knows, such as
+-- which Claude account a pane was started with. Returns text and an optional
+-- colour; ctx is nil outside a context. nil or '' shows nothing, and an error
+-- in the function is swallowed rather than breaking the tab bar.
+limen.tab_suffix = function(tab, ctx)
+  return 'acct', '#6c7086'
+end
+```
+
 The module is tested in **WezTerm's own Lua runtime** — no standalone Lua
 interpreter is needed for it:
 
@@ -945,7 +966,7 @@ make cover         # coverage
 make bench         # startup time per call, measured on your machine
 ```
 
-**178 test cases** — unit tests for the parser, resolution and output, plus
+**275 test cases** (239 test functions and their subtests) — unit tests for the parser, resolution and output, plus
 integration tests that run the built binary in real directories. The keychain is
 never touched: the lookup function is injectable, and the CLI tests prove with a
 `PATH=/nonexistent` that `prompt` gets by without `security(1)`.
@@ -974,9 +995,29 @@ start.go       the start routine — discovered per rule, declared to disambigua
 status.go      limen status — the dial, the table, --json/--deep/--verbose/--check
 render.go      show / json / shell / prompt
 commands.go    init, keychain-import, shell hooks
+registry.go    limen list / register — the machine-wide context registry
+note.go        limen note — dated notes in .limen/notes.md
+backlog.go     limen backlog — open notes across all contexts
+account.go     limen account — override, list, use, clear, swap
+claudeaccounts.go  limen account env / exec — token accounts and their sources
+migrate.go     limen migrate — lifting onto the .limen/ layout
+service.go     service.yaml discovery — its kind, reported, never copied
+examples/aurora/   a sample .limen/ directory: descriptor, meta.yaml, notes
 integrations/
   wezterm-limen.lua  WezTerm status line and tab title
   selftest.lua       checks that WezTerm's Lua runtime executes
   test.sh            test driver including the negative control
 scripts/bench.sh     startup-time benchmark
 ```
+
+## Licence
+
+Copyright © 2026 Kavanara GmbH.
+
+limen is licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0-only). You may use, change and redistribute it; a modified version
+that you distribute, or offer to others over a network, must be made available
+under the same licence, with its source.
+
+Releases up to and including 0.18.0 were published under the Apache License 2.0
+and remain available under it.
