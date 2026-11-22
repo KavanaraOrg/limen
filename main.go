@@ -70,6 +70,7 @@ const usage = `limen ` + version + ` — context and identity per directory
   limen profile         inherited norms: what applies here, is it current,
                         and which skills are paused (pausedSkills: in meta.yaml)
     … install <source>  fetch an Agent Plugins package (path or git URL)
+    … update            fetch every installed package again from its repository
     … sync [--dry-run]  materialise skills and ADRs into the project
     … check             exit 1 on drift — for pre-commit or CI
     … list              what the store holds

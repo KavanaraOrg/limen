@@ -182,7 +182,26 @@ limen profile          # what applies here, is it current
 limen profile sync     # write skills and ADRs into the project, --dry-run only shows
 limen profile check    # exit 1 on drift — for pre-commit or CI
 limen profile list     # what the store holds
+limen profile update   # fetch every installed package again from its repository
 ```
+
+### Following the newest version — `@latest`
+
+A version pin means a project approved exactly that text. Where a project should
+instead follow its norms as they evolve, it declares `@latest`:
+
+```yaml
+profiles: kavanara-baseline@latest
+```
+
+`sync` then takes whatever version the store holds and records it in the lock,
+and `check` fails as soon as a newer version is installed than the one
+materialised — so the project cannot quietly stay behind. On a machine where
+the package is not installed (a CI runner), `check` compares against the lock
+alone, as it does for a pinned project. Moving every project forward is two
+steps: `limen profile update` refreshes the store from each package's
+repository, then `limen profile sync` in each project. Nothing of it runs in
+the hook.
 
 The pairing of ADR and skill is the point: **the ADR is the why, the skill is
 the how.** An ADR is read when someone questions a rule; a skill acts without
